@@ -1,0 +1,122 @@
+\documentclass[12pt,UTF8,fontset=none,twocolumn]{ctexart}
+% 使用「繁體中文」常見 Windows 字型，避免 Fandol 缺字（如「戶、為、線」等）。
+% 若本機缺少字型，會自動退回到 Noto/Source Han 或 Fandol。
+%
+% 優先使用微軟正黑體（字形完整、含粗體），其次使用新細明體/細明體。
+\IfFontExistsTF{Microsoft JhengHei}{
+  \setCJKmainfont{Microsoft JhengHei}
+  \setCJKsansfont{Microsoft JhengHei}
+}{
+  \IfFontExistsTF{PMingLiU}{
+    \setCJKmainfont{PMingLiU}
+    \IfFontExistsTF{Microsoft JhengHei}{\setCJKsansfont{Microsoft JhengHei}}{}
+  }{
+    \IfFontExistsTF{MingLiU}{
+      \setCJKmainfont{MingLiU}
+      \IfFontExistsTF{Microsoft JhengHei}{\setCJKsansfont{Microsoft JhengHei}}{}
+    }{
+      \IfFontExistsTF{Noto Serif CJK TC}{
+        \setCJKmainfont{Noto Serif CJK TC}
+      }{
+        \IfFontExistsTF{Source Han Serif TC}{
+          \setCJKmainfont{Source Han Serif TC}
+        }{
+          \setCJKmainfont{FandolSong-Regular}
+        }
+      }
+      \IfFontExistsTF{Noto Sans CJK TC}{
+        \setCJKsansfont{Noto Sans CJK TC}
+      }{
+        \IfFontExistsTF{Source Han Sans TC}{
+          \setCJKsansfont{Source Han Sans TC}
+        }{
+          \setCJKsansfont{FandolHei-Regular}
+        }
+      }
+    }
+  }
+}
+
+\usepackage{geometry}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% Algorithm styling (ruled + line numbers + blue // comments)
+\floatstyle{ruled}
+\restylefloat{algorithm}
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{Output:}}
+\algrenewcommand\algorithmiccomment[1]{\hfill{\color{blue}\ttfamily // #1}}
+
+\geometry{margin=1in}
+\setlength{\columnsep}{0.25in}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+\makeatletter
+% Section numbering: I., II., ... and subsections: A., B., ...
+\renewcommand{\thesection}{\Roman{section}}
+\renewcommand{\thesubsection}{\Alph{subsection}}
+\renewcommand{\@seccntformat}[1]{\csname the#1\endcsname.\quad}
+\makeatother
+
+\title{Seamless Coverage and ISL-Assisted Ferrying for Sustained User Satisfaction in NGSO Constellations}
+\author{Chia-Yu Hu and Guey-Yun Ghang}
+\date{}
+
+\begin{document}
+\maketitle
+\thispagestyle{plain}
+\pagestyle{plain}
+
+\section{Introduction}
+\label{sec:introduction}
+近年 NGSO/LEO constellations 快速部署，使全球性寬頻覆蓋與低延遲通訊成為可能，並被視為未來整合式非地面網路（NTN）與 6G 架構的重要組成 \cite{giordani2021ntn,lin2021leosat6g,zhujiang2022istn}。此外，NGSO systems 的通訊架構、資源管理與與地面網路整合等議題亦已被系統性整理 \cite{alhraishawi2022ngsoSurvey}。在寬頻衛星系統常用的 Ku/Ka bands 中，NGSO 與既有 GSO networks 往往需在相同或相鄰頻段共享資源（例如 fixed-satellite service, FSS），因此 co-channel interference 成為不可避免的關鍵限制。當 constellation 規模擴大到數千顆衛星時，多顆衛星的 \emph{aggregated emissions} 可能對受保護的 GSO earth stations 造成顯著干擾，且干擾強度與衛星幾何位置高度相關並隨時間快速變動。
+
+為保護既有 GSO networks，International Telecommunication Union（ITU）在 \emph{Radio Regulations} 的 Article~22 制定 NGSO--GSO 共存下的干擾限制，並以 equivalent power flux-density（EPFD）等指標評估 NGSO constellation 對 GSO earth stations 的\emph{聚合}干擾 \cite{itur_rr2020}. 由於 EPFD 規範需要可重現且一致的干擾計算流程，ITU-R 亦提供用於符合性檢核的功能性描述（S.1503-3），來判定 NGSO/FSS 系統是否符合 Article~22 的限制 \cite{itur_s1503_2018}. 在實際干擾評估與資源最佳化建模中，天線主/旁瓣與離軸角（off-axis angle）對干擾有決定性影響，因此常採用 ITU-R 所建議的輻射方向圖模型：例如 S.1528 用於 30~GHz 以下的 NGSO 衛星天線方向圖 \cite{itur_s1528_2001}，以及 S.1428-1 作為 10.7--30~GHz 頻段非 GSO 干擾評估所用的 FSS earth station 參考方向圖 \cite{itur_s1428_2001}。上述法規與建模框架共同形成 NGSO constellation 在 Ka-band 等頻段進行干擾緩解與服務維持時必須遵循的基本約束。
+
+因此，NGSO resource management 本質上具有多目標特性：一方面必須符合 EPFD regulatory constraints，另一方面又要最大化用戶服務能力（例如 throughput、coverage 或 demand satisfaction）。既有研究指出，在 dense NGSO deployments 下的 interference risk 需要被量化評估，且可能涉及 operator coordination 與 mitigation trade-offs \cite{braun2019dyspan}。在實務上，典型 mitigation 手段包含 power control、tilt/pitch 調整與空間隔離等\cite{hills2022beamsteering}。在 EPFD 約束下，Jalali 等人進一步提出在 constellation 尺度聯合最佳化 transmit power 與 tilt/pitch，以提升 demand satisfaction 並降低干擾風險 \cite{jalali2023joint}。另一方面，Li 等人針對 OneWeb 的 progressive pitch 建立模型並反推可行參數，指出該策略可在多數地區有效降低干擾，但仍可能在部分時間產生 service blind spots \cite{li2021progressive}。這些工作凸顯了 interference mitigation 與 service continuity 之間的權衡：當衛星為避免干擾而調整 pitch 或關閉部分 beams 時，其有效 coverage footprint 可能縮小，導致使用者短暫失去覆蓋，進而降低整體 satisfaction 與使用體驗。
+
+本論文聚焦於在干擾約束下維持 \emph{seamless service}。相關研究已指出，對採用 progressive pitch 的 LEO constellations，容易在相鄰衛星覆蓋銜接處產生 blind spots。我們將干擾事件中幾何條件最敏感、最可能主導 EPFD 違規的衛星稱為 \emph{critical satellites}，並探討當 critical satellites 必須調整發射行為時，如何避免造成使用者 zero-coverage 與 satisfaction 下降。除了下行發射端的 power/tilt 控制外，現代巨型 constellations 亦逐步導入 inter-satellite links (ISL)，可在星座內部提供額外的 routing 與 load balancing 自由度。本文據此提出 \emph{seamless coverage} 與 \emph{ISL-assisted ferrying} 兩項設計，降低 interference mitigation 對 service continuity 的負面影響。
+
+\subsection{Contributions}
+\label{subsec:contributions}
+本論文主要貢獻如下：
+\begin{itemize}[leftmargin=*,itemsep=0.25em]
+  \item \textbf{Seamless coverage constraint.} 提出 seamless coverage 設計目標，確保每一位使用者在任意時間至少被一顆衛星覆蓋，避免因 interference mitigation（如 tilt/pitch 調整或 power reduction）導致的 zero-coverage intervals。
+  \item \textbf{ISL-assisted ferrying via same-orbit north/south neighbors.} 針對 critical satellites，選擇同軌道上幾何距離最近的 north/south neighbors，透過 ISL 進行 traffic relaying，以提升 service continuity 並維持較高 demand satisfaction。
+\end{itemize}
+
+\section{Related Work}
+\label{sec:related-work}
+\subsection{Interference mitigation for NGSO--GSO coexistence}
+NGSO--GSO coexistence 下的干擾問題已引發大量 interference analysis 與 mitigation 研究。常見的 spatial isolation 方法包含 arc avoidance、exclusion zones，以及 beam switching-off 等作法；這些方法雖能降低干擾，卻可能以犧牲 coverage 與 service continuity 為代價。較具彈性的作法則在干擾約束下進行 resource optimization。Jalali 等人以 ITU 定義的 EPFD 作為 aggregate interference limit，並聯合最佳化 constellation 的 transmit power 與 tilt/pitch，以在 regulatory compliance 的同時最大化 demand satisfaction \cite{jalali2023joint}。該工作指出 EPFD events 具有顯著的地理相依性與幾何敏感性，並可透過僅對少數 critical satellites 進行 tilt 以降低操作複雜度。然而，tilt 或 beam switching-off 仍可能縮小 coverage footprint，進而在某些時段造成 coverage gaps。
+
+\subsection{OneWeb progressive pitch and service blind spots}
+OneWeb 提出 progressive pitch 策略以保護 GSO networks，但其具體參數與細節並未完整公開。Li 等人針對 OneWeb--GSO coexistence 建立數學模型，在滿足 GSO interference protection criteria 下求解 progressive pitch parameters，並以數值模擬驗證其 interference avoidance 效果 \cite{li2021progressive}。該研究指出 progressive pitch 在全球多數區域具有良好 interference avoidance 能力，但在部分時間仍可能出現 service blind spots，並分析其成因與可能的消除方式。這說明：以 pitch adjustment / beam switching-off 為主的 mitigation 策略，仍可能在特定幾何條件下導致 service continuity 問題。
+
+\subsection{Baselines}
+本文以兩篇文獻作為主要 baselines：（i）在 aggregate EPFD constraints 下聯合最佳化 power 與 tilt/pitch 以提升 demand satisfaction 的方法 \cite{jalali2023joint}；（ii）針對 OneWeb progressive pitch 之參數反推與 interference avoidance 效果分析 \cite{li2021progressive}。本文之方法在此基礎上進一步引入 seamless coverage constraint 與 ISL-assisted ferrying，以降低 mitigation 造成的 service blind spots 並提升整體 satisfaction。
+
+\subsection*{Research Gap}
+現有 NGSO--GSO interference mitigation 多以滿足 EPFD constraints 為主，常透過 power/tilt 或 beam switching-off 達成；但這些做法可能改變 coverage footprint，造成 coverage gaps / service blind spots，降低 service continuity \cite{li2021progressive,jalali2023joint}。此外，EPFD 作為\emph{聚合}干擾指標具有幾何相依與時間變動特性，使得僅靠局部或靜態設計難以同時兼顧「合規」與「無縫覆蓋」\cite{itur_rr2020,itur_s1503_2018}。因此，本研究聚焦於在 EPFD 合規下顯式加入 seamless coverage，並利用 ISL 進行 relay/ferrying 以維持較高的 user satisfaction。
+
+% \input{chapter3}
+% \input{chapter4}
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

@@ -1,0 +1,229 @@
+% Auto-generated from word_IV_v1.docx (Chapter 4)
+% NOTE: This file is intended to be included from main.tex via \input{chapter4}.
+% If you want to compile this file alone, compile `chapter4_standalone.tex` instead.
+
+\section{Method}
+\label{sec:chapter4}
+
+\subsection{Overview of the Proposed Framework}
+
+根據第三章所建立之系統模型，本文之核心目標是在滿足 GSO ground station 保護要求的前提下，盡可能提升 LEO 系統中 users 的整體 satisfaction。由於當 critical satellite 接近受保護 GS 正上方時，其部分 beams 可能因 EPFD constraint 而被大幅降功率，導致 beam 內 users 的服務品質顯著下降，因此僅依靠 beam-level power allocation 難以同時兼顧法規合規性與使用者服務表現。
+
+基於此，本文提出一套 EPFD-constrained power control and bidirectional relay framework。該方法分為兩個主要階段。第一階段先根據各 beam 對 GS 的 EPFD contribution 執行 power control，使整體 aggregate EPFD 回到法規限制內。第二階段再針對 critical satellite 上因 power control 而受影響之低滿足率 users，透過同軌道 north/south neighboring satellites 執行跨衛星 reassociation，以恢復其服務品質。若單向 relay 導致 helper satellites 過載，則進一步允許 source 與 helper 之間進行反向 reassociation，形成 bidirectional load balancing，以避免 helper 成為新的 bottleneck。
+
+整體而言，本文方法並非直接追求單一 user 之局部改善，而是在每次 reassociation 後重新計算 beam power、SINR、capacity、TDMA rate、user satisfaction 與 aggregate EPFD，並僅在整體 satisfaction 提升且 EPFD 仍合法時才接受該次調整。因此，本文方法可視為一套在法規限制下兼顧服務品質之逐步式資源重配置機制。
+
+\subsection{EPFD-Driven Power Control}
+
+在每一個 time slot $t$ 中，系統首先依第三章之 beam-level EPFD model，計算所有可視衛星 active beams 對受保護 GS 的 EPFD contributions。對 beam $b$ 而言，其 contribution 為 $\mathrm{EPFD}_{s,b}(t)$，而整體 aggregate EPFD 為
+\[
+\mathrm{EPFD}_{\mathrm{agg}}(t)=
+\sum_{s\in\mathcal{S}(t)}\sum_{b\in\mathcal{B}_s}\mathrm{EPFD}_{s,b}(t).
+\]
+
+若初始 beam-level power allocation 下的 $\mathrm{EPFD}_{\mathrm{agg}}(t)$ 已滿足
+\[
+\mathrm{EPFD}_{\mathrm{agg}}(t)\le \mathrm{EPFD}_{\mathrm{lim}},
+\]
+則系統無需額外進行功率調整；反之，若 aggregate EPFD 超出限制，則必須啟動 power control。
+
+本文採用 beam-level EPFD-driven power reduction。具體而言，系統首先根據各 beams 的 EPFD contribution 大小進行排序，優先選擇目前對 GS 干擾貢獻最大的 beam，逐步降低其發射功率。功率降低後，該 beam 所服務 users 的 SINR 與實際服務速率亦隨之下降，因此其 satisfaction 也會同步降低。為避免個別 beam 被過度壓制，本文對每個受控 beam 設定一個最低殘餘服務門檻，在 EPFD-first power control 下，系統對受影響 beam 所保留的最基本服務水準。其目的並非保證使用者體驗仍然良好，而是避免 beam 在未正式關閉或轉交 relay 前，已被壓低到近似失效的狀態。
+
+設衛星 $s$ 之 beam $b$ 在功率 $P$ 下，其服務 users 的平均 satisfaction 為
+\[
+\bar{S}_{s,b}(P)=
+\frac{1}{|\mathcal{U}_{s,b}(t)|}
+\sum_{u\in\mathcal{U}_{s,b}(t)} \mathrm{sat}_u(P),
+\]
+則其最低殘餘服務功率可定義為
+\[
+P_{s,b}^{\mathrm{res}}(t)=
+\min\left\{P:\bar{S}_{s,b}(P)\ge \rho_{\mathrm{res}}\right\},
+\]
+其中 $\rho_{\mathrm{res}}$ 為最低殘餘服務門檻。
+
+當該 beam 之功率已降至 $P_{s,b}^{\mathrm{res}}(t)$ 且 aggregate EPFD 仍未回到限制內時，系統轉而處理下一個 EPFD contribution 最大的 beam。因此，在每個 time slot 中，power control 的執行邏輯可概括為：
+\begin{enumerate}
+    \item 計算所有 active beams 的 EPFD contribution；
+    \item 若 aggregate EPFD 超標，則優先降低最大 contribution beam 之功率；
+    \item 若該 beam 已達最低殘餘服務門檻但 aggregate EPFD 仍超標，則改處理下一個 beam；
+    \item 重複以上流程，直到 aggregate EPFD 回到限制內為止。
+\end{enumerate}
+
+經過此步驟後，雖然系統已重新滿足 EPFD 法規要求，但 critical satellite 上的部分 users 可能因 beam 功率遭明顯壓低而出現服務品質下降的情況。因此，後續需透過 relay/reassociation 進一步恢復整體 satisfaction。
+
+\subsection{Distressed User Identification}
+
+完成 EPFD-driven power control 後，系統將檢查 critical satellite 上各 users 的滿足率。由於本文之 relay 機制旨在補救 power control 所造成的服務品質下降，因此只有在 power control 後 satisfaction 顯著降低的 users，才會被視為候選 reassociation 對象。
+
+設 critical satellite 為 $s^{\star}(t)$，則其低滿足率 users 集合可定義為
+\[
+\mathcal{U}_{\mathrm{dis}}(t)=
+\left\{
+u\in\mathcal{U}_{s^{\star}}(t)\; \middle|\;
+\mathrm{sat}_u(t)<\rho_{\mathrm{dis}}
+\right\},
+\]
+其中 $\rho_{\mathrm{dis}}$ 為 distressed user 判斷門檻。當 user 的 satisfaction 低於此門檻時，代表其目前服務速率相較需求已有明顯不足，因此需要進一步考慮透過 neighboring satellites 執行 reassociation。
+
+需特別強調的是，本文之 distressed user identification 是在 power control 完成後才進行。換言之，relay 並非在所有 time slots 中固定啟動，而是僅在特定幾何情況下，當 critical satellite 為了滿足 EPFD protection 而不得不壓低功率，進而導致部分 users 服務品質惡化時，才會被觸發。這樣的設計使 relay 成為一種 service recovery mechanism，而非一般性的連線切換策略。
+
+\subsection{Post-PC One-Way Relay Trial}
+
+在完成 EPFD-driven power control 後，系統進入 relay 階段。需特別強調的是，本文所提出之 relay 機制並非從原始 pre-PC 狀態開始，而是以 post-PC system state 作為唯一的起始基準。換言之，relay 階段的 user reassociation、beam load 更新與功率重分配，皆建立在 power control 完成後所保留下來的合法系統狀態之上。
+
+設 power control 後 beam 的發射功率為 $P_{s,b}^{\mathrm{pc}}(t)$，則衛星 $s$ 在 relay 階段中的固定總功率預算定義為
+\[
+P_{s}^{\mathrm{relay}}(t)=
+\sum_{b\in\mathcal{B}_s} P_{s,b}^{\mathrm{pc}}(t).
+\]
+
+此處 $P_{s}^{\mathrm{relay}}(t)$ 表示衛星 $s$ 在 relay 階段可使用之總功率上限。本文規定，後續所有 relay-related reassociation 均不得重新恢復至原始最大衛星功率 $P_s^{\max}$，而必須在固定的 post-PC power budget 下進行。此設計可確保 relay 機制不會破壞 power control 所建立之 EPFD 合法性基礎。
+
+在此基礎上，系統首先於 source satellite 上找出所有滿足率低於門檻之 distressed users，並依其 satisfaction 值由低至高排序。此排序方式反映出本文優先處理最受 power control 影響之 users，使服務恢復機制能優先作用於最迫切的對象。
+
+對於每一位 distressed user $u$，系統會依序檢查 north 與 south helper satellites，判斷其上是否存在可覆蓋該 user 的 beam。若 helper satellite $\hat{s}$ 上存在 beam $\hat{b}$ 使得
+\[
+u\in \mathcal{C}_{\hat{s},\hat{b}}(t),
+\]
+則 $(\hat{s},\hat{b})$ 可視為該 user 的一個 feasible target beam。此時，系統建立一個 source-to-helper one-way relay trial，暫時將 user $u$ 由原 serving beam reassociate 至 $(\hat{s},\hat{b})$。
+
+若該 trial 被建立，則受影響 beams 的 user 數會更新為
+\begin{align}
+N_{s^{\star},b_u}'(t) &= N_{s^{\star},b_u}(t)-1,\\
+N_{\hat{s},\hat{b}}'(t) &= N_{\hat{s},\hat{b}}(t)+1,
+\end{align}
+其中 $b_u$ 表示原先服務 distressed user $u$ 的 beam。
+
+需注意的是，本文並不對所有可視衛星重新進行全系統更新，而僅對受影響的衛星重新計算 beam user counts 與 beam-level power allocation。這樣的設計一方面更符合局部 reassociation 的物理意義，另一方面也能有效降低演算法計算複雜度。
+
+在 beam loads 更新後，系統會對受影響衛星依新的 beam user distribution 重新執行 load-aware power split。對於任一受影響衛星 $\tilde{s}$，其更新後 beam power 可表示為
+\[
+P_{\tilde{s},b}'(t)=
+\frac{N_{\tilde{s},b}'(t)}
+{\sum_{b'\in\mathcal{B}_{\tilde{s}}^{\mathrm{act}\prime}(t)}N_{\tilde{s},b'}'(t)}
+\,P_{\tilde{s}}^{\mathrm{relay}}(t),
+\qquad
+b\in\mathcal{B}_{\tilde{s}}^{\mathrm{act}\prime}(t),
+\]
+其中 $\mathcal{B}_{\tilde{s}}^{\mathrm{act}\prime}(t)$ 為 reassociation 後仍為 active 的 beams 集合。完成 beam power update 後，系統重新計算該 trial 狀態下之 user SINR、instantaneous capacity、actual TDMA rate、satisfaction，以及所有 active beams 對 GS 的 aggregate EPFD。
+
+因此，本文中的 one-way relay 並非直接接受的 user transfer，而是一種建立在 post-PC 合法功率基礎上的 trial-based reassociation mechanism。其目的在於先評估 source-to-helper offloading 是否能在不違反 EPFD constraint 的前提下，同時改善 distressed user 與整體系統表現。
+
+\subsection{Bidirectional Balancing Under Fixed Relay Power Budget}
+
+若 one-way relay 僅改善了單一 distressed user 的服務品質，但未能使全系統 satisfaction objective 提升，則表示 helper satellite 雖成功接手該 user，卻可能因新增負載而使其原有 users 的服務品質下降。此時，若仍直接接受 one-way relay 結果，則容易造成 helper 成為新的服務瓶頸。因此，本文在 one-way relay 失敗時，進一步啟動 bidirectional balancing。
+
+bidirectional balancing 的核心概念是：當 source satellite 將部分 distressed users 轉交給 helper 後，若 helper 因此負載過高，則允許系統從 helper 原有 users 中挑選一部分，反向 reassociate 回 source satellite。透過這種 forward and reverse reassociation 的組合，系統可在三顆局部相鄰衛星之間進行更細緻的 user redistribution，避免單向 offloading 所造成之負載偏移。
+
+具體而言，在 one-way relay trial 未能被接受時，系統會從 helper 原本服務的 users 中搜尋那些同時也落在 source 某個 beam 覆蓋範圍內的 users。若 helper-side user $v$ 可由 source satellite 上 beam $\bar{b}$ 覆蓋，即
+\[
+v\in \mathcal{C}_{s^{\star},\bar{b}}(t),
+\]
+則系統可進一步建立一個 helper-to-source reverse reassociation trial，將 user $v$ 由 helper 反向轉回 source。
+
+與 one-way relay 相同，每一次 reverse reassociation 都不會重新啟動全系統功率配置，而僅對受影響衛星進行局部更新。具體流程包括：
+\begin{enumerate}
+    \item 更新受影響 beams 的 user counts；
+    \item 在固定的 post-PC satellite power budgets 下重新執行 beam-level load-aware power split；
+    \item 重新計算相關 users 的 SINR、capacity、actual rate、satisfaction 與 aggregate EPFD。
+\end{enumerate}
+
+值得注意的是，bidirectional balancing 並非獨立於 one-way relay 的第二套機制，而是作為 one-way relay 不足時的補償式平衡程序。其目的不是單純降低 helper 負載，而是尋找一個在不破壞 distressed user 改善效果的前提下，能進一步提升全系統 satisfaction objective 的 reassociation 組合。
+
+因此，對於每一個 reverse reassociation trial，系統除檢查其是否提升全系統 objective 與維持 EPFD 合法外，也必須確認其不會抵銷原本 one-way relay 對 distressed user 所帶來的改善。只有在這些條件皆滿足時，該 reverse trial 才具有被保留的價值。
+
+\subsection{Candidate Selection and Acceptance Rule}
+
+在本文方法中，不論是 one-way relay 或 reverse reassociation，任何候選解都不是立即接受，而必須經過完整的 accept/reject evaluation。設當前被處理之 distressed user 為 $u$，系統整體 satisfaction objective 定義為
+\[
+\Phi(t)=\sum_{i\in\mathcal{U}(t)} \mathrm{sat}_i(t).
+\]
+
+則任一 relay candidate 僅在同時滿足下列條件時，才可被接受：
+
+\paragraph{(1) Distressed user improvement}
+被處理之 distressed user 的 satisfaction 必須提升：
+\[
+\mathrm{sat}_u^{\mathrm{trial}}(t)>\mathrm{sat}_u^{\mathrm{base}}(t).
+\]
+
+\paragraph{(2) Global objective improvement}
+全系統 satisfaction objective 必須提升：
+\[
+\Phi^{\mathrm{trial}}(t)>\Phi^{\mathrm{base}}(t).
+\]
+
+\paragraph{(3) EPFD feasibility}
+調整後的 aggregate EPFD 仍須維持合法：
+\[
+\mathrm{EPFD}_{\mathrm{agg}}^{\mathrm{trial}}(t)\le \mathrm{EPFD}_{\mathrm{lim}}.
+\]
+
+因此，one-way relay candidate 的基本接受條件可寫為
+\[
+\Bigl(
+\mathrm{sat}_u^{\mathrm{trial}}(t)>\mathrm{sat}_u^{\mathrm{base}}(t)
+\Bigr)
+\;\land\;
+\Bigl(
+\Phi^{\mathrm{trial}}(t)>\Phi^{\mathrm{base}}(t)
+\Bigr).
+\]
+
+\[
+\land\;
+\Bigl(
+\mathrm{EPFD}_{\mathrm{agg}}^{\mathrm{trial}}(t)\le \mathrm{EPFD}_{\mathrm{lim}}
+\Bigr).
+\]
+
+若某次 one-way relay 雖然使 distressed user 之 satisfaction 提升，但卻因 helper 承擔額外負載而使其他 users 的 satisfaction 下降，導致 $\Phi^{\mathrm{trial}}(t)\le \Phi^{\mathrm{base}}(t)$，則系統不會直接接受該 one-way relay，而是進一步啟動 bidirectional balancing。
+
+對於 bidirectional candidates，除仍須滿足全系統 objective improvement 與 EPFD legality 外，本文另外要求 reverse reassociation 不得破壞 distressed user 的原有改善效果。也就是說，若 reverse trial 造成先前已被改善之 distressed user satisfaction 再次下降，則該 bidirectional candidate 即不予接受。
+
+在完成所有 one-way 與 bidirectional trials 後，系統將從所有可行候選中，選擇滿足條件且使 satisfaction objective 提升最大之候選結果。若沒有任何候選同時滿足上述條件，則系統直接回退至原始 post-PC 狀態，不採用任何 relay 調整。
+
+此種 candidate selection rule 的好處在於，它不會因局部 user 的短期改善而犧牲整體效能，也不會因過度 offloading 而造成 helper side 的新瓶頸。透過目標函數與 EPFD legality 的雙重約束，系統得以在服務品質與法規保護之間取得較佳平衡。
+
+\subsection{Algorithm of the Proposed Relay Framework}
+
+根據前述 one-way relay trial、bidirectional balancing 與 candidate acceptance rule，本文所提方法的完整流程可整理如演算法 1 所示。該演算法以 post-PC system state 為起點，逐一處理 source 衛星上的 distressed users。對每位 user，系統在固定的 post-PC satellite power budget 下，評估可行的 one-way 與 bidirectional reassociation 候選，並僅接受那些能提升全系統 satisfaction objective 且維持 EPFD 合法的候選結果。
+
+\begin{algorithm}[t]
+\caption{Proposed Post-PC One-Way and Bidirectional Relay Procedure}
+\scriptsize
+\begin{algorithmic}[1]
+\Require $P_{s,b}^{\mathrm{pc}}(t)$, user association, $P_s^{\mathrm{relay}}(t)$, source $s^{\star}$, helpers $\{s^N,s^S\}$, $\rho_{\mathrm{dis}}$, $\mathrm{EPFD}_{\mathrm{lim}}$
+\Ensure Final relay association and power allocation
+
+\State Run power control; obtain $P_{s,b}^{\mathrm{pc}}(t)$.
+\State Set $P_s^{\mathrm{relay}}(t)\leftarrow \sum_{b\in\mathcal{B}_s} P_{s,b}^{\mathrm{pc}}(t)$ for each satellite $s$.
+\State Find distressed users $\mathcal{U}_{\mathrm{dis}}(t)$ on $s^{\star}$; sort by ascending satisfaction.
+
+\ForAll{$u\in\mathcal{U}_{\mathrm{dis}}(t)$}
+    \State $\mathcal{C}\leftarrow\emptyset$.
+    \ForAll{$\hat{s}\in\{s^N,s^S\}$}
+        \If{$\exists$ feasible beam on $\hat{s}$ covering $u$}
+            \State One-way trial: $u: s^{\star}\rightarrow \hat{s}$; recompute objective and $\mathrm{EPFD}_{\mathrm{agg}}(t)$.
+            \If{$u$ improves, objective improves, and $\mathrm{EPFD}_{\mathrm{agg}}(t)\le \mathrm{EPFD}_{\mathrm{lim}}$}
+                \State Add to $\mathcal{C}$.
+            \Else
+                \State Bidirectional: find reverse candidates $v$ on $\hat{s}$ coverable by $s^{\star}$.
+                \ForAll{reverse candidate $v$}
+                    \State Reverse trial: $v: \hat{s}\rightarrow s^{\star}$; recompute objective and $\mathrm{EPFD}_{\mathrm{agg}}(t)$.
+                    \If{objective improves and $u$ keeps improvement}
+                        \State Add to $\mathcal{C}$.
+                    \EndIf
+                \EndFor
+            \EndIf
+        \EndIf
+    \EndFor
+    \If{$\mathcal{C}\neq \emptyset$}
+        \State Select best feasible candidate in $\mathcal{C}$ (max objective gain).
+    \Else
+        \State Roll back to original post-PC state.
+    \EndIf
+\EndFor
+\end{algorithmic}
+\end{algorithm}
