@@ -10,11 +10,11 @@ con.Visible = 10;
 disp("---------------------- done");
 
 %% 初始化
-addpath(fullfile(pwd, 'Matlab', 'jacky'));
+addpath(fullfile(pwd,'jacky_code', 'Matlab', 'jacky'));
 disp("初始化");
 % Satellite_Name() 主要用於 OneWeb/TLE 命名對應，Walker 建星本身不依賴它。
 % Satellite_Name();
-file_path = "C:\Users\jacky\Desktop\jacky_code\";
+file_path = "C:\Users\jacky\Desktop\jacky_code\jacky_code\";
 if ~exist(file_path + 'STK','dir')
     mkdir(file_path);
 end
@@ -32,34 +32,6 @@ disp("---------------------- done");
 % Walker Star / near-polar shell constellation (LEO)
 % Create only Plane 1 (48 satellites) per your request.
 % ------------------------------------------------------------
-%% ================== 建立衛星================== 
-alt_km = 1200;
-inc_deg = 55;
-% Walker 內建 p=2..numPlanes；要含 P17/P18 軌道面請設 numPlanes >= 18
-numPlanes = 8;
-beamProfile = "-3dB"; % "-3dB" or "-5dB"
-% Only one variable to control satellites per plane.
-satsPerPlane = 16;
-
-satPrefix = "WalkerStar";
-
-switch lower(strrep(beamProfile, " ", ""))
-    case {"-5db","5db","minus5db"}
-        beamHalfH_deg = 36.5;
-        beamHalfV_deg = 36.0;
-    otherwise
-        beamHalfH_deg = 25.0;
-        beamHalfV_deg = 24.5;
-end
-% If scenario already exists, prefer using its StartTime as epoch (more consistent).
-tEpochStr = datestr(datetime('now','TimeZone','UTC'), 'dd mmm yyyy HH:MM:SS');
-try
-    tEpochStr = char(sc.StartTime);
-catch
-end
-leo = CreateWalkerConstellation_HPOP( ...
-    root, sc, alt_km, inc_deg, numPlanes, satsPerPlane, tEpochStr);
-
 
 %% ================== 建立衛星================== 
 alt_km = 1200;

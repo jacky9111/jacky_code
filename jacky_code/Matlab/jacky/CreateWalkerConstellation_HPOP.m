@@ -17,7 +17,7 @@ function leoNames = CreateWalkerConstellation_HPOP(root, sc, alt_km, inc_deg, nu
 
     leoNames = strings(0,1);
 
-    for p = 1:3
+    for p = 1:5
         raan_deg = (p-1) * raanSpacing_deg;
 
         for s = 1:satsPerPlane
