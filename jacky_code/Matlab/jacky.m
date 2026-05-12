@@ -54,7 +54,7 @@ leo = CreateWalkerConstellation_HPOP( ...
     root, sc, alt_km, inc_deg, numPlanes, satsPerPlane, tEpochStr);
 
 % 只對指定軌道面建 RectBeam：衛星命名為 Pxx_Syy，只保留 P02_*, P03_*, P17_*, P18_*
-rectBeamPlanes = [1,2,3];
+rectBeamPlanes = [1,2,3,4,5];
 maskRect = false(size(leo));
 for kp = 1:numel(rectBeamPlanes)
     maskRect = maskRect | startsWith(leo, sprintf('P%02d_', rectBeamPlanes(kp)));
@@ -70,30 +70,28 @@ end
 CreateOneWebRectBeam(root, leoRectBeam, "RectBeam", beamProfile);
 
 %% ================== 建立地面站（範例）==================
-AddGroundStationToSTK(root, "GS_01", 0, 59);
+AddGroundStationToSTK(root, "GS_01", 0, 121);
 
 %% ================== 建立user（範例）==================
 satUserTargets = [
     "P01_S01"
     "P01_S02"
-    % "P01_S03" 
-    % "P01_S48"
     "P01_S49"
     "P02_S01"
     "P02_S02"
-    % "P02_S03"
-    % "P02_S48"
     "P02_S49"
     "P03_S01"
     "P03_S02"
-    % "P03_S03"
-    % "P03_S48"
     "P03_S49"
+    "P04_S01"
+    "P04_S02"
+    "P04_S49"
+    "P05_S01"
+    "P05_S02"
+    "P05_S49"
 ];
-AddUsersAroundSatellitesToSTK(root, satUserTargets, 1888, 20);
+AddUsersAroundSatellitesToSTK(root, satUserTargets, 1888, 30);
 
-%% ================== 判斷seamless coverage ================== 
-RunStrictRelayCheck_FromLeoPart(root, leo, tEpochStr, beamHalfH_deg, beamHalfV_deg, beamProfile);
 
 %% ================== Ku EPFD：16 束（純 MATLAB）+ 每秒 Excel ==================
 % STK 端只保留上面單一 RectBeam（快速看 seamless / relay）；不在 STK 建 16 個 sensor。
@@ -102,19 +100,19 @@ RunStrictRelayCheck_FromLeoPart(root, leo, tEpochStr, beamHalfH_deg, beamHalfV_d
 leo_part = [
     "P01_S01"
     "P01_S02"
-    % "P01_S03"
-    % "P01_S48"
     "P01_S49"
     "P02_S01"
     "P02_S02"
-    % "P02_S03"
-    % "P02_S48"
     "P02_S49"
     "P03_S01"
     "P03_S02"
-    % "P03_S03"
-    % "P03_S48"
     "P03_S49"
+    "P04_S01"
+    "P04_S02"
+    "P04_S49"
+    "P05_S01"
+    "P05_S02"
+    "P05_S49"
 ];
 
 geo_part = [
@@ -227,21 +225,48 @@ optsBeamEpfd.areaSide_km = 1888;
 optsBeamEpfd.params = optsEpfd.params;
 optsBeamEpfd.params.useEIRPDensityModel = false; % use total power model, then split by user load
 optsBeamEpfd.params.Ptotal_W = 16.8; % total transmit power per satellite, W
-optsBeamEpfd.userDemand_Mbps = 50;
+optsBeamEpfd.userDemand_Mbps = 150;
 optsBeamEpfd.limitPowerToDemand = true;
 optsBeamEpfd.beamHalfEW_deg = 36.5;
 optsBeamEpfd.beamHalfNS_deg = 36.0 / 16;
 optsBeamEpfd.allocatePowerByUsers = true;
+optsBeamEpfd.enforceBeamPowerMax = true;
+optsBeamEpfd.maxBeamPower_W = 1.05;
+optsBeamEpfd.distressSatellite = "P03_S01";
+optsBeamEpfd.distressXi1 = 0.5;
+optsBeamEpfd.distressXi2 = 0.5;
+optsBeamEpfd.helperEta1 = 0.4;
+optsBeamEpfd.helperEta2 = 0.3;
+optsBeamEpfd.helperEta3 = 0.3;
 optsBeamEpfd.userPrefix = "User_";
-optsBeamEpfd.prioritySatellite = "P02_S01";
+optsBeamEpfd.prioritySatellite = "P03_S01";
 optsBeamEpfd.priorityCoverageFirst = true;
+optsBeamEpfd.priorityBeamRange = 3:14;
+% EPFD backoff: target worst-user satisfaction after a step (rate/demand, same as User_State); power is solved by bisection, not P*0.2.
 optsBeamEpfd.previousBeamPowerScale = 0.2;
+% Only backoff beams whose worst-user satisfaction before the step is at least this (default 0.9 ~= "fully served").
+% optsBeamEpfd.epfdBackoffMinInitialUserSat = 0.9;
 optsBeamEpfd.excelPath = char(fullfile(file_path, 'Matlab_data', 'Beam_EPFD_GS01_CurrentEpoch.xlsx'));
 ComputeBeamEpfdToGsExcel(root, optsBeamEpfd);
 
+optsOffload = optsBeamEpfd;
+optsOffload.sourceSatellite = "P03_S01";
+optsOffload.minAcceptSatisfaction = 0.2;
+optsOffload.sourceSafeBeamCount = 3;
+optsOffload.resultExcelPath = char(fullfile(file_path, 'Matlab_data', 'P03_S01_Offloading_CurrentEpoch.xlsx'));
+RunSourceBeamOffloadingAtEpoch(root, optsOffload);
+
 
 %% ================== User field 平面圖 ==================
+
 PlotUserFieldPlanarMap(root, satUserTargets, "GS_01", optsBeamEpfd.areaSide_km, tEpochStr, "User_", optsBeamEpfd.excelPath);
+PlotUserFieldPlanarMapServedUsers(root, satUserTargets, "GS_01", optsBeamEpfd.areaSide_km, tEpochStr, "User_", optsBeamEpfd.excelPath);
+PlotOffloadingResultPlanarMap(root, satUserTargets, "GS_01", optsBeamEpfd.areaSide_km, tEpochStr, "User_", optsOffload.resultExcelPath);
+
+
+
+
+
 
 
 

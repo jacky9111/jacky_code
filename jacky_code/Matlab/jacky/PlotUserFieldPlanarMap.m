@@ -29,11 +29,12 @@ gsName = char(string(gsName));
 [userLon_deg, userLat_deg] = getUsersLatLon(sc, userPrefix);
 [gsLat_deg, gsLon_deg] = getFacilityLatLon(root.GetObjectFromPath(['*/Facility/' gsName]));
 [satLon_deg, satLat_deg, satLabels, satPlaneLabels] = getSatelliteSubpoints(root, satNames, tStr);
-[refLat_deg, refLon_deg, refSatLabel] = getReferenceSatellite(satLat_deg, satLon_deg, satLabels, gsLat_deg, gsLon_deg);
 [rectLonMat_deg, rectLatMat_deg] = getSatelliteRectangles(satLat_deg, satLon_deg, areaSide_km);
 [trackLonCells, trackLatCells, trackLabels] = getExtendedPlaneTracks( ...
     satLon_deg, satLat_deg, satPlaneLabels, rectLonMat_deg(:), rectLatMat_deg(:), userLon_deg, userLat_deg, gsLon_deg, gsLat_deg);
-Tagg = loadAggregateBackoffTable(epfdExcelPath);
+Tsystem = loadSystemStateTable(epfdExcelPath);
+Tdistress = loadBeamDistressScoreTable(epfdExcelPath);
+Tuser = loadUserStateTable(epfdExcelPath);
 
 fig = figure('Name', 'User Field Planar Map', 'Color', 'w');
 hold on;
@@ -50,43 +51,38 @@ for kSat = 1:numel(satLabels)
     patch('XData', rectLon_deg([1 2 3 4 1]), ...
         'YData', rectLat_deg([1 2 3 4 1]), ...
         'FaceColor', rectColor, 'FaceAlpha', 0.035, ...
-        'EdgeColor', rectColor, 'LineStyle', '--', 'LineWidth', 1.6, ...
+        'EdgeColor', rectColor, 'LineStyle', '-', 'LineWidth', 0.8, ...
         'DisplayName', sprintf('%s field', satLabels(kSat)));
 
     for kBand = 1:numel(bandLonCells)
-        plot(bandLonCells{kBand}, bandLatCells{kBand}, ':', ...
-            'Color', rectColor, 'LineWidth', 0.7, 'HandleVisibility', 'off');
+        plot(bandLonCells{kBand}, bandLatCells{kBand}, '--', ...
+            'Color', rectColor, 'LineWidth', 0.6, 'HandleVisibility', 'off');
     end
 end
 
-annotateAggregateEpfdLabels(Tagg, satLabels, rectLonMat_deg, rectLatMat_deg, rectColors);
+annotateBeamDistressLabels(Tdistress, satLabels, rectLonMat_deg, rectLatMat_deg, rectColors);
 
-trackColors = lines(max(numel(trackLonCells), 1));
 for k = 1:numel(trackLonCells)
     plot(trackLonCells{k}, trackLatCells{k}, '-', ...
-        'Color', trackColors(k,:), 'LineWidth', 1.8, ...
+        'Color', 'k', 'LineWidth', 1.0, ...
         'DisplayName', sprintf('%s ground track', trackLabels(k)));
 end
 
-if ~isempty(userLon_deg)
-    scatter(userLon_deg, userLat_deg, 36, 'filled', ...
-        'MarkerFaceColor', [0 0.45 0.74], 'MarkerFaceAlpha', 0.80, ...
-        'DisplayName', 'Users');
-end
+plotUsersByServingSatellite(userLon_deg, userLat_deg, Tuser, satLabels, rectColors);
 
 if ~isempty(satLon_deg)
     planeU = unique(satPlaneLabels, 'stable');
     for iPlane = 1:numel(planeU)
         mask = satPlaneLabels == planeU(iPlane);
         scatter(satLon_deg(mask), satLat_deg(mask), 52, ...
-            'Marker', 'o', 'MarkerEdgeColor', trackColors(iPlane,:), ...
-            'MarkerFaceColor', trackColors(iPlane,:), ...
+            'Marker', 'o', 'MarkerEdgeColor', rectColors(find(mask, 1),:), ...
+            'MarkerFaceColor', rectColors(find(mask, 1),:), ...
             'DisplayName', sprintf('%s satellites', planeU(iPlane)));
     end
 
     for k = 1:numel(satLabels)
         text(satLon_deg(k) + 0.25, satLat_deg(k) + 0.18, satLabels(k), ...
-            'FontSize', 8, 'Color', [0.10 0.10 0.10], 'Interpreter', 'none');
+            'FontSize', 12, 'Color', [0.10 0.10 0.10], 'Interpreter', 'none');
     end
 end
 
@@ -96,17 +92,13 @@ plot(gsLon_deg, gsLat_deg, 'p', 'MarkerSize', 14, ...
 text(gsLon_deg + 0.25, gsLat_deg + 0.20, gsName, ...
     'FontSize', 9, 'FontWeight', 'bold', 'Interpreter', 'none');
 
-plot(refLon_deg, refLat_deg, 's', 'MarkerSize', 8, ...
-    'MarkerFaceColor', [0.20 0.20 0.20], 'MarkerEdgeColor', 'k', ...
-    'DisplayName', sprintf('Reference subpoint (%s)', refSatLabel));
-
 xlabel('Longitude (deg)');
 ylabel('Latitude (deg)');
 title(sprintf('User Field Planar Map at %s', tStr), 'Interpreter', 'none');
 legend('Location', 'best');
 
-allLon = [userLon_deg(:); gsLon_deg; rectLonMat_deg(:); satLon_deg(:); refLon_deg];
-allLat = [userLat_deg(:); gsLat_deg; rectLatMat_deg(:); satLat_deg(:); refLat_deg];
+allLon = [userLon_deg(:); gsLon_deg; rectLonMat_deg(:); satLon_deg(:)];
+allLat = [userLat_deg(:); gsLat_deg; rectLatMat_deg(:); satLat_deg(:)];
 for k = 1:numel(trackLonCells)
     allLon = [allLon; trackLonCells{k}(:)]; %#ok<AGROW>
     allLat = [allLat; trackLatCells{k}(:)]; %#ok<AGROW>
@@ -173,8 +165,8 @@ for k = 2:numBands
 end
 end
 
-function Tagg = loadAggregateBackoffTable(epfdExcelPath)
-Tagg = table();
+function Tsystem = loadSystemStateTable(epfdExcelPath)
+Tsystem = table();
 if strlength(string(epfdExcelPath)) == 0
     return;
 end
@@ -182,34 +174,130 @@ end
 excelPath = char(string(epfdExcelPath));
 if ~exist(excelPath, 'file')
     warning('PlotUserFieldPlanarMap:EpfdExcelMissing', ...
-        'EPFD Excel not found: %s. Skipping aggregate EPFD labels.', excelPath);
+        'EPFD Excel not found: %s. Skipping system-state EPFD labels.', excelPath);
     return;
 end
 
 try
-    Tagg = readtable(excelPath, 'Sheet', 'AggregateBackoff');
+    Tsystem = readtable(excelPath, 'Sheet', 'System_State');
 catch ME
     warning('PlotUserFieldPlanarMap:EpfdExcelReadFailed', ...
-        'Failed to read AggregateBackoff sheet from %s: %s', excelPath, ME.message);
-    Tagg = table();
+        'Failed to read System_State sheet from %s: %s', excelPath, ME.message);
+    Tsystem = table();
 end
 end
 
-function annotateAggregateEpfdLabels(Tagg, satLabels, rectLonMat_deg, rectLatMat_deg, rectColors)
-if isempty(Tagg) || height(Tagg) == 0
+function Tdistress = loadBeamDistressScoreTable(epfdExcelPath)
+Tdistress = table();
+if strlength(string(epfdExcelPath)) == 0
     return;
 end
 
-requiredVars = ["CandidateSatellite","CandidateBeam","Rank","AggregateEPFD_dB"];
-if ~all(ismember(requiredVars, string(Tagg.Properties.VariableNames)))
-    warning('PlotUserFieldPlanarMap:EpfdExcelMissingColumns', ...
-        'AggregateBackoff sheet is missing required columns. Skipping aggregate EPFD labels.');
+excelPath = char(string(epfdExcelPath));
+if ~exist(excelPath, 'file')
+    warning('PlotUserFieldPlanarMap:DistressExcelMissing', ...
+        'EPFD Excel not found: %s. Skipping beam distress labels.', excelPath);
     return;
 end
 
-for i = 1:height(Tagg)
-    satName = string(Tagg.CandidateSatellite(i));
-    beamIdx = double(Tagg.CandidateBeam(i));
+try
+    Tdistress = readtable(excelPath, 'Sheet', 'beam distress score');
+catch ME
+    warning('PlotUserFieldPlanarMap:DistressExcelReadFailed', ...
+        'Failed to read beam distress score sheet from %s: %s', excelPath, ME.message);
+    Tdistress = table();
+end
+end
+
+function Tuser = loadUserStateTable(epfdExcelPath)
+Tuser = table();
+if strlength(string(epfdExcelPath)) == 0
+    return;
+end
+
+excelPath = char(string(epfdExcelPath));
+if ~exist(excelPath, 'file')
+    warning('PlotUserFieldPlanarMap:UserExcelMissing', ...
+        'EPFD Excel not found: %s. Skipping user-state coloring.', excelPath);
+    return;
+end
+
+try
+    Tuser = readtable(excelPath, 'Sheet', 'User_State');
+catch ME
+    warning('PlotUserFieldPlanarMap:UserExcelReadFailed', ...
+        'Failed to read User_State sheet from %s: %s', excelPath, ME.message);
+    Tuser = table();
+end
+end
+
+function plotUsersByServingSatellite(userLon_deg, userLat_deg, Tuser, satLabels, satColors)
+if isempty(userLon_deg)
+    return;
+end
+
+if isempty(Tuser) || height(Tuser) == 0 || ...
+        ~all(ismember(["sat"], string(Tuser.Properties.VariableNames)))
+    scatter(userLon_deg, userLat_deg, 24, 'filled', ...
+        'MarkerFaceColor', [0 0.45 0.74], 'MarkerFaceAlpha', 0.80, ...
+        'DisplayName', 'Users');
+    return;
+end
+
+Nuser = min(numel(userLon_deg), height(Tuser));
+userSat = strings(numel(userLon_deg), 1);
+userSat(1:Nuser) = string(Tuser.sat(1:Nuser));
+plottedAny = false;
+
+for kSat = 1:numel(satLabels)
+    mask = userSat == satLabels(kSat);
+    if any(mask)
+        scatter(userLon_deg(mask), userLat_deg(mask), 24, 'filled', ...
+            'MarkerFaceColor', satColors(kSat,:), 'MarkerEdgeColor', satColors(kSat,:), ...
+            'MarkerFaceAlpha', 0.80, 'DisplayName', sprintf('%s users', satLabels(kSat)));
+        plottedAny = true;
+    end
+end
+
+unassignedMask = userSat == "" | ~ismember(userSat, satLabels);
+if any(unassignedMask)
+    scatter(userLon_deg(unassignedMask), userLat_deg(unassignedMask), 24, 'filled', ...
+        'MarkerFaceColor', [0.50 0.50 0.50], 'MarkerEdgeColor', [0.50 0.50 0.50], ...
+        'MarkerFaceAlpha', 0.80, 'DisplayName', 'Unassigned users');
+        plottedAny = true;
+end
+
+if ~plottedAny
+    scatter(userLon_deg, userLat_deg, 24, 'filled', ...
+        'MarkerFaceColor', [0 0.45 0.74], 'MarkerFaceAlpha', 0.80, ...
+        'DisplayName', 'Users');
+end
+end
+
+function annotateBeamDistressLabels(Tdistress, satLabels, rectLonMat_deg, rectLatMat_deg, rectColors)
+if isempty(Tdistress) || height(Tdistress) == 0
+    return;
+end
+
+requiredVars = ["sat","beam","beam_distress_score"];
+if ~all(ismember(requiredVars, string(Tdistress.Properties.VariableNames)))
+    warning('PlotUserFieldPlanarMap:DistressExcelMissingColumns', ...
+         'beam distress score sheet is missing required columns. Skipping distress labels.');
+    return;
+end
+
+scoreMask = isfinite(Tdistress.beam_distress_score);
+Tdistress = Tdistress(scoreMask, :);
+if isempty(Tdistress)
+    return;
+end
+
+[~, order] = sort(Tdistress.beam_distress_score, 'descend');
+Tdistress = Tdistress(order, :);
+
+for i = 1:height(Tdistress)
+    satName = string(Tdistress.sat(i));
+    beamIdx = double(Tdistress.beam(i));
     if ~isfinite(beamIdx) || beamIdx < 1 || beamIdx > 16
         continue;
     end
@@ -223,13 +311,13 @@ for i = 1:height(Tagg)
     rectLat_deg = rectLatMat_deg(satIdx,:);
     lonMin = min(rectLon_deg);
     lonMax = max(rectLon_deg);
-    lonC = lonMin + 0.30 * (lonMax - lonMin);
+    lonC = lonMin + 0.10 * (lonMax - lonMin);
     latMax = max(rectLat_deg);
     latMin = min(rectLat_deg);
     bandHeight = (latMax - latMin) / 16;
     latC = latMax - (beamIdx - 0.5) * bandHeight;
 
-    labelText = sprintf('Beam_%02d %.1f', beamIdx, double(Tagg.AggregateEPFD_dB(i)));
+    labelText = sprintf('R#%d %.3f', i, double(Tdistress.beam_distress_score(i)));
     text(lonC, latC, labelText, ...
         'HorizontalAlignment', 'left', 'VerticalAlignment', 'middle', ...
         'FontSize', 7, 'FontWeight', 'bold', ...

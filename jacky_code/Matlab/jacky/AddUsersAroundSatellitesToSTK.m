@@ -35,6 +35,7 @@ end
 [baseOffsets_km, dx_km, dy_km] = buildUniformScatteredOffsets(areaSide_km, numUsersPerSatellite);
 userNames = strings(0,1);
 globalUserCount = 0;
+deleteExistingUsers(sc, "User_");
 
 for iSat = 1:numel(satNames)
     satName = char(satNames(iSat));
@@ -57,11 +58,6 @@ for iSat = 1:numel(satNames)
 
         globalUserCount = globalUserCount + 1;
         userName = sprintf('User_%03d', globalUserCount);
-        try
-            sc.Children.Item(userName).Unload();
-        catch
-        end
-
         userObj = sc.Children.New('eFacility', userName);
         userObj.Position.AssignGeodetic(lat_deg, lon_deg, 0);
         userObj.Graphics.LabelVisible = true;
@@ -74,66 +70,75 @@ for iSat = 1:numel(satNames)
 end
 end
 
+function deleteExistingUsers(sc, userPrefix)
+facs = sc.Children.GetElements('eFacility');
+toDelete = strings(0,1);
+for k = 0:int32(facs.Count-1)
+    fac = facs.Item(k);
+    facName = string(fac.InstanceName);
+    if startsWith(facName, userPrefix)
+        toDelete(end+1,1) = facName; %#ok<AGROW>
+    end
+end
+
+for k = 1:numel(toDelete)
+    try
+        sc.Children.Item(char(toDelete(k))).Unload();
+    catch
+    end
+end
+end
+
 function [offsets_km, dx_km, dy_km] = buildUniformScatteredOffsets(areaSide_km, numUsers)
-% Staggered hex-like lattice + bounded jitter:
-% keeps spacing nearly uniform while looking visually interleaved.
-centerPull = 0.80;
+% Balance users across the 16 north-south beam bands first, then spread each
+% band in the east-west direction. This keeps per-beam loads much flatter.
+numBands = 16;
+centerPull = 0.88;
 effectiveSide_km = areaSide_km * centerPull;
-dx_km = sqrt((effectiveSide_km * effectiveSide_km) / max(numUsers, 1));
-dy_km = sqrt(3) / 2 * dx_km;
-if dy_km <= 0
-    dy_km = effectiveSide_km;
+bandHeight_km = effectiveSide_km / numBands;
+dy_km = bandHeight_km;
+
+basePerBand = floor(numUsers / numBands);
+extraUsers = mod(numUsers, numBands);
+usersPerBand = repmat(basePerBand, numBands, 1);
+if extraUsers > 0
+    extraBands = round(linspace(1, numBands, extraUsers));
+    usersPerBand(extraBands) = usersPerBand(extraBands) + 1;
 end
 
-rows = max(1, floor(effectiveSide_km / dy_km) + 1);
-cols = max(1, floor(effectiveSide_km / dx_km) + 2);
-yStart_km = -effectiveSide_km / 2;
-xStart_km = -effectiveSide_km / 2;
-candidatePts_km = zeros(0, 2);
-
-for ir = 1:rows
-    y_km = yStart_km + (ir-1) * dy_km;
-    rowShift_km = 0.5 * dx_km * mod(ir-1, 2);
-    for ic = 1:cols
-        x_km = xStart_km + (ic-1) * dx_km + rowShift_km;
-        if x_km < -effectiveSide_km/2 || x_km > effectiveSide_km/2 || ...
-                y_km < -effectiveSide_km/2 || y_km > effectiveSide_km/2
-            continue;
-        end
-        candidatePts_km(end+1,:) = [x_km, y_km]; %#ok<AGROW>
-    end
-end
-
-if size(candidatePts_km, 1) < numUsers
-    extraCols = cols + 2;
-    for ir = 1:rows
-        y_km = yStart_km + (ir-1) * dy_km;
-        rowShift_km = 0.5 * dx_km * mod(ir, 2);
-        for ic = 1:extraCols
-            x_km = xStart_km + (ic-1) * dx_km + rowShift_km;
-            if x_km < -effectiveSide_km/2 || x_km > effectiveSide_km/2 || ...
-                    y_km < -effectiveSide_km/2 || y_km > effectiveSide_km/2
-                continue;
-            end
-            candidatePts_km(end+1,:) = [x_km, y_km]; %#ok<AGROW>
-        end
-    end
-    candidatePts_km = unique(round(candidatePts_km, 9), 'rows', 'stable');
-end
-
-selectedIdx = round(linspace(1, size(candidatePts_km, 1), numUsers));
-jitterFracX = 0.22;
-jitterFracY = 0.22;
 offsets_km = zeros(numUsers, 2);
+row = 0;
+maxUsersInBand = max(usersPerBand);
+dx_km = effectiveSide_km / max(maxUsersInBand, 1);
 
-for k = 1:numUsers
-    basePt = candidatePts_km(selectedIdx(k), :);
-    [jx, jy] = localBoundedJitter(k);
-    east_km = basePt(1) + jx * jitterFracX * dx_km;
-    north_km = basePt(2) + jy * jitterFracY * dy_km;
+for band = 1:numBands
+    nBandUsers = usersPerBand(band);
+    if nBandUsers <= 0
+        continue;
+    end
 
-    offsets_km(k, 1) = min(max(east_km, -effectiveSide_km/2), effectiveSide_km/2);
-    offsets_km(k, 2) = min(max(north_km, -effectiveSide_km/2), effectiveSide_km/2);
+    northBase_km = effectiveSide_km / 2 - (band - 0.5) * bandHeight_km;
+    if nBandUsers == 1
+        % One user in this beam band: rotate its east-west position by band
+        % so sparse bands do not all sit near the center line.
+        eastPositions_km = -effectiveSide_km/2 + effectiveSide_km * mod((band - 1) * 0.61803398875 + 0.5, 1);
+    else
+        eastPositions_km = linspace(-effectiveSide_km/2, effectiveSide_km/2, nBandUsers + 2);
+        eastPositions_km = eastPositions_km(2:end-1);
+        if mod(band, 2) == 0
+            eastPositions_km = fliplr(eastPositions_km);
+        end
+    end
+
+    for k = 1:nBandUsers
+        row = row + 1;
+        [jx, jy] = localBoundedJitter(row);
+        east_km = eastPositions_km(k) + jx * 0.18 * dx_km;
+        north_km = northBase_km + jy * 0.20 * bandHeight_km;
+
+        offsets_km(row, 1) = min(max(east_km, -effectiveSide_km/2), effectiveSide_km/2);
+        offsets_km(row, 2) = min(max(north_km, -effectiveSide_km/2), effectiveSide_km/2);
+    end
 end
 end
 
