@@ -101,7 +101,7 @@ for t = tStart:step:tEnd
         b_all = reorderBoresightsNorthToSouth(P_leo*1000, b_all);
 
         term = zeros(Nbeam, Ngeo);
-        inb = false(Nbeam, Ngeo); % debug only (not used for control)
+        inb = nan(Nbeam, Ngeo); % debug/report only (NaN when useInBeamFootprint is false)
         offH = nan(Nbeam, Ngeo);
         offV = nan(Nbeam, Ngeo);
         phit = nan(Nbeam, Ngeo);
@@ -123,7 +123,7 @@ for t = tStart:step:tEnd
                 th_h = atan2d(dot(d_hat, c_axis), dot(d_hat, b_hat));
                 th_v = atan2d(dot(d_hat, t_axis), dot(d_hat, b_hat));
                 offH(b,j) = th_h; offV(b,j) = th_v;
-                inb(b,j) = (abs(th_h) <= opts.beamHalfEW_deg) && (abs(th_v) <= opts.beamHalfNS_deg);
+                inb(b,j) = gsInBeamFootprint(th_h, th_v, opts.beamHalfEW_deg, opts.beamHalfNS_deg, P);
 
                 phit(b,j) = angleDeg(b_hat, d_hat);
                 Gt_lin = max(P.A_fit * exp(P.beta_fit * phit(b,j)), 1e-30);

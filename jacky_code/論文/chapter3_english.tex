@@ -1,0 +1,275 @@
+\input{chapter3_style}
+
+\section{System Model and Problem Formulation}
+\label{sec:system_model}
+
+\subsection{System Model}
+
+\mdsubsubsection[sssec:network]{Network Scenario}
+We consider a OneWeb-like LEO satellite communication system and focus on downlink interference management under NGSO--GSO coexistence. Each LEO satellite is equipped with $16$ spot beams. In every time slot, terrestrial users are randomly generated within each satellite's coverage area. Let $\mathcal{S}(t)$ denote the set of visible LEO satellites at time slot $t$, and let $\mathcal{B}_s$ denote the set of beams on satellite $s$, where $|\mathcal{B}_s|=16$.
+
+Fig.~\ref{fig:oneweb_16beam_ku} illustrates the Ku-band 16-beam footprint of a OneWeb-like satellite in the antenna $(\alpha,\epsilon)$ plane. Each ellipse corresponds to one beam $b\in\mathcal{B}_s$, and the black marker denotes the nadir direction. We adopt a nadir-pointing rectangular beam model with horizontal half-angle $24.5^{\circ}$ and north--south half-angle $25/16^{\circ}$, yielding $16$ along-track spot beams with adjacent overlap for continuous coverage.
+
+In each time slot, every user is served by exactly one beam on one satellite. Let $\mathcal{U}(t)$ denote the set of users at time slot $t$. The user--beam association is represented by a binary variable $x_{u,s,b}(t)$: if user $u$ is served by beam $b$ on satellite $s$, then $x_{u,s,b}(t)=1$; otherwise, $x_{u,s,b}(t)=0$. Because each user can be associated with only one serving satellite and one beam, the association variables must satisfy a uniqueness constraint.
+
+In addition, the system includes a protected GSO ground station (GS). At certain times, a visible LEO satellite may form a near-inline geometry with respect to the GS. When a LEO satellite passes close to the GS boresight, its downlink transmission is more likely to produce a high aggregate EPFD at the GS. We define the LEO satellite that poses the greatest interference risk to the GS at time slot $t$ as the \emph{critical satellite}, denoted by $s^{\star}(t)$. We also consider the along-track neighbors of the critical satellite on the same orbital plane, denoted by $s^{\mathrm{N}}(t)$ and $s^{\mathrm{S}}(t)$, as candidate helper satellites for subsequent relaying and user reassociation.
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.80\linewidth]{oneweb_ku_16beam_footprint}
+\caption{OneWeb Ku-band 16-beam footprint in the $(\alpha,\epsilon)$ antenna plane. Each contour indicates the coverage of one spot beam.}
+\label{fig:oneweb_16beam_ku}
+\end{figure}
+
+\mdsubsubsection[sssec:association]{User Association and Service Model}
+Let the set of users served by beam $b$ on satellite $s$ be
+\begin{equation}
+\mathcal{U}_{s,b}(t)=\{u\in\mathcal{U}(t)\mid x_{u,s,b}(t)=1\}.
+\label{eq:user_set_beam}
+\end{equation}
+The number of users on beam $b$ is
+\begin{equation}
+N_{s,b}(t)=\sum_{u\in\mathcal{U}(t)} x_{u,s,b}(t).
+\label{eq:beam_load}
+\end{equation}
+The demanded data rate of user $u$ is denoted by $D_u(t)$. Because each user can be served by only one satellite--beam pair, we require
+\begin{equation}
+\sum_{s\in\mathcal{S}(t)}\sum_{b\in\mathcal{B}_s} x_{u,s,b}(t)\le 1,
+\qquad \forall u\in\mathcal{U}(t).
+\label{eq:single_association}
+\end{equation}
+Furthermore, if user $u$ is not within the service footprint $\mathcal{C}_{s,b}(t)$ of beam $b$ (see Fig.~\ref{fig:oneweb_16beam_ku}), association is prohibited:
+\begin{equation}
+x_{u,s,b}(t)=0,
+\qquad \forall u\notin\mathcal{C}_{s,b}(t).
+\label{eq:coverage_constraint}
+\end{equation}
+
+\mdsubsubsection[sssec:fullpower]{Fixed Full-Power Beam Model}
+Motivated by practical satellite operation, we do not consider continuous power control in this work. Instead, we introduce a binary on/off variable $y_{s,b}(t)\in\{0,1\}$ to indicate whether beam $b$ on satellite $s$ is active in time slot $t$: $y_{s,b}(t)=1$ means that the beam transmits at full power, and $y_{s,b}(t)=0$ means that the beam is shut down. Each beam can therefore operate only at full power or zero power:
+\begin{equation}
+P_{s,b}(t)=y_{s,b}(t)\,P_{s,b}^{\max},
+\qquad \forall s\in\mathcal{S}(t),\ \forall b\in\mathcal{B}_s,
+\label{eq:beam_power}
+\end{equation}
+where $P_{s,b}^{\max}$ is the maximum transmit power of beam $b$.
+
+In the initial configuration, all $16$ beams are assumed to be active, i.e., $y_{s,b}(t)=1$ for all $b\in\mathcal{B}_s$. Under this setting, every beam transmits at $P_{s,b}^{\max}$ regardless of whether it carries users. If a beam serves no user in the current time slot, it still transmits at full power and contributes co-channel interference to other users and to the protected GS, but it does not participate in user association or intra-beam TDMA sharing. If the aggregate EPFD exceeds the regulatory limit, the system is adjusted through beam shutdown ($y_{s,b}(t)=0$) or user reassociation, rather than by selecting intermediate power levels.
+
+\mdsubsubsection[sssec:sinr]{SINR and User Satisfaction Model}
+The received quality of a user is determined by the desired signal from the serving beam, co-channel interference, and receiver noise. Unlike full frequency reuse, we adopt a OneWeb-like 8-channel frequency plan. Hence, the co-channel interference observed by a user is contributed only by active beams ($y_{s',b'}(t)=1$) that reuse the same channel as the serving beam.
+
+Let $\mathcal{K}$ denote the set of available channels with $|\mathcal{K}|=8$. If user $u$ is served by beam $b$ on satellite $s$, the channel assigned to that beam is denoted by $k_{s,b}\in\mathcal{K}$. The received SINR of user $u$ is defined as
+\begin{equation}
+\mathrm{SINR}_u(t)=
+\frac{S_u(t)}
+{I_u^{\mathrm{intra}}(t)+I_u^{\mathrm{inter}}(t)+N_u(t)}.
+\label{eq:sinr_def}
+\end{equation}
+where $S_u(t)$ is the desired signal power, $I_u^{\mathrm{intra}}(t)$ and $I_u^{\mathrm{inter}}(t)$ denote intra-satellite and inter-satellite co-channel interference, respectively, and $N_u(t)$ is the receiver noise power.
+
+\mdparagraph{Desired Signal Power}
+For user $u$ served by beam $b$ on satellite $s$, the desired signal power is
+\begin{equation}
+S_u(t)=
+x_{u,s,b}(t)\,
+\frac{P_{s,b}(t)\,G^{\mathrm{tx}}_{s,b\to u}(t)\,G_u^{\mathrm{rx}}}
+{L_{s,u}(t)},
+\label{eq:desired_signal}
+\end{equation}
+where $P_{s,b}(t)$ is the transmit power of beam $b$, $G^{\mathrm{tx}}_{s,b\to u}(t)$ is the transmit gain of beam $b$ toward user $u$, $G_u^{\mathrm{rx}}$ is the user receive gain, and $L_{s,u}(t)$ is the total propagation loss between satellite $s$ and user $u$.
+
+The total propagation loss is modeled as
+\begin{equation}
+L_{s,u}(t)=L_{s,u}^{\mathrm{fs}}(t)\,L_{s,u}^{\mathrm{gas}}(t),
+\label{eq:total_loss}
+\end{equation}
+where $L_{s,u}^{\mathrm{fs}}(t)$ and $L_{s,u}^{\mathrm{gas}}(t)$ denote free-space path loss and atmospheric gas loss, respectively. The free-space path loss in linear scale is
+\begin{equation}
+L_{s,u}^{\mathrm{fs}}(t)=\left(\frac{4\pi d_{s,u}(t)}{\lambda}\right)^2,
+\label{eq:fspl}
+\end{equation}
+where $d_{s,u}(t)$ is the distance between satellite $s$ and user $u$, and $\lambda$ is the carrier wavelength.
+
+\mdparagraph{Intra-Satellite Interference}
+Because different beams on the same satellite may reuse the same channel, a user may suffer interference from other co-channel beams on its serving satellite. This component is defined as intra-satellite interference:
+\begin{equation}
+\begin{aligned}
+I_u^{\mathrm{intra}}(t)
+&=
+\sum_{\substack{b'\in\mathcal{B}_s\\ b'\neq b}}
+\frac{P_{s,b'}(t)\,G^{\mathrm{tx}}_{s,b'\to u}(t)\,G_u^{\mathrm{rx}}}
+{L_{s,u}(t)}.
+\end{aligned}
+\label{eq:intra_interference}
+\end{equation}
+
+\mdparagraph{Inter-Satellite Interference}
+In addition to intra-satellite interference, a user may also be interfered with by co-channel beams on other visible satellites:
+\begin{equation}
+I_u^{\mathrm{inter}}(t)=
+\sum_{\substack{s'\in\mathcal{S}(t)\\ s'\neq s}}
+\;
+\sum_{b'\in\mathcal{B}_{s'}}
+\frac{
+P_{s',b'}(t)\,G^{\mathrm{tx}}_{s',b'\to u}(t)\,G_u^{\mathrm{rx}}
+}{
+L_{s',u}(t)
+}.
+\label{eq:inter_interference}
+\end{equation}
+Equation~\eqref{eq:inter_interference} indicates that any active co-channel beam on another visible satellite may contribute interference to the user.
+
+\mdparagraph{SINR Expression}
+Combining the above definitions, the received SINR of user $u$ can be written as
+\begin{equation}
+\mathrm{SINR}_u(t)=
+\frac{S_u(t)}
+{I_u^{\mathrm{intra}}(t)+I_u^{\mathrm{inter}}(t)+N_u(t)}.
+\label{eq:sinr_final}
+\end{equation}
+Under the OneWeb-like 8-channel architecture, the received quality of a user depends not only on the power and geometry of its serving beam, but also on intra-satellite and inter-satellite co-channel interference. Because each active beam transmits at full power, channel-aware user association and beam shutdown directly affect overall system performance.
+
+\mdparagraph{Instantaneous Capacity and Service Rate}
+After obtaining the user SINR, the instantaneous capacity is computed from the Shannon formula:
+\begin{equation}
+C_u(t)=B_u\log_2\!\bigl(1+\mathrm{SINR}_u(t)\bigr),
+\label{eq:capacity}
+\end{equation}
+where $B_u$ is the effective bandwidth allocated to user $u$.
+
+Because multiple users may be served by the same beam, intra-beam resource sharing is modeled by TDMA. If user $u$ is served by beam $b$ on satellite $s$ and the beam carries $N_{s,b}(t)$ users, the actual service rate of user $u$ is
+\begin{equation}
+R_u(t)=\frac{C_u(t)}{N_{s,b}(t)}.
+\label{eq:service_rate}
+\end{equation}
+
+\mdparagraph{User Satisfaction}
+To evaluate whether the delivered service satisfies the user demand, we define the satisfaction of user $u$ as
+\begin{equation}
+\mathrm{sat}_u(t)=\min\!\left(\frac{R_u(t)}{D_u(t)},\,1\right).
+\label{eq:satisfaction}
+\end{equation}
+If $\mathrm{sat}_u(t)=1$, the demand of user $u$ is fully satisfied; if $\mathrm{sat}_u(t)<1$, the delivered rate is insufficient. This satisfaction metric is used in both the problem formulation and the performance evaluation.
+
+\mdsubsubsection[sssec:epfd]{Beam-Level EPFD Model for a 16-Beam Satellite}
+Under NGSO--GSO coexistence, in addition to user link quality, the aggregate EPFD produced by LEO satellites at the protected GSO ground station must remain below the regulatory limit. Because each LEO satellite in this study employs $16$ beams with different pointing directions, off-boresight angles, and transmit powers toward the GS, the interference from one satellite cannot be approximated by a single aggregate transmit power. Instead, each beam contribution must be computed individually and summed in the linear domain.
+
+\mdparagraph{Beam-Level PFD Toward the Protected GS}
+For beam $b$ on satellite $s$, the power flux density (PFD) toward the protected GS is
+\begin{equation}
+\mathrm{PFD}_{s,b}^{\mathrm{GS}}(t)=
+\frac{P_{s,b}(t)\,G^{\mathrm{tx}}_{s,b\to g}(t)}
+{4\pi d_{s,g}^{2}(t)}.
+\label{eq:pfd_gs}
+\end{equation}
+where $G^{\mathrm{tx}}_{s,b\to g}(t)$ is the transmit gain of beam $b$ toward the GS, and $d_{s,g}(t)$ is the distance between satellite $s$ and the protected GS.
+
+\mdparagraph{Beam-Level EPFD Contribution}
+In addition to the PFD produced at the GS, EPFD accounts for the off-boresight receive gain of the GS antenna toward the LEO direction, normalized by the peak receive gain. The EPFD contribution of beam $b$ is therefore
+\begin{equation}
+\mathrm{EPFD}_{s,b}(t)=
+\frac{P_{s,b}(t)\,G^{\mathrm{tx}}_{s,b\to g}(t)}
+{4\pi d_{s,g}^{2}(t)}
+\cdot
+\frac{G_g^{\mathrm{rx}}(\theta_{g\to s}(t))}
+{G_{g,\max}^{\mathrm{rx}}}
+\cdot
+\frac{1}{B_{\mathrm{ref}}}.
+\label{eq:epfd_beam}
+\end{equation}
+where $G_g^{\mathrm{rx}}(\theta_{g\to s}(t))$ is the GS receive gain in the direction of satellite $s$, $G_{g,\max}^{\mathrm{rx}}$ is the peak GS receive gain, and $B_{\mathrm{ref}}$ is the reference bandwidth used for EPFD evaluation.
+
+\mdparagraph{Angular Dependence of Beam Gain}
+Let $\phi_{s,b\to g}(t)$ denote the off-boresight angle from the boresight of beam $b$ on satellite $s$ to the GS. The transmit gain toward the GS is therefore a function of this angle:
+\begin{equation}
+G^{\mathrm{tx}}_{s,b\to g}(t)=G^{\mathrm{tx}}_{s,b}\!\bigl(\phi_{s,b\to g}(t)\bigr).
+\label{eq:beam_gain_angle}
+\end{equation}
+Because the $16$ beams on the same satellite point to different coverage directions, their off-boresight angles toward the GS are generally different even though they share the same satellite platform. This is the main reason for adopting beam-level EPFD calculation instead of a single-satellite power approximation.
+
+\mdparagraph{Per-Satellite EPFD Aggregation}
+Since each satellite is equipped with $16$ beams and each active beam transmits at $P_{s,b}^{\max}$, the total EPFD contribution of satellite $s$ is the linear sum over all beams:
+\begin{equation}
+\mathrm{EPFD}_{s}^{\mathrm{sat}}(t)=
+\sum_{b\in\mathcal{B}_s} \mathrm{EPFD}_{s,b}(t).
+\label{eq:epfd_sat}
+\end{equation}
+When $y_{s,b}(t)=0$, beam $b$ is shut down, $P_{s,b}(t)=0$, and its EPFD contribution to the GS is zero.
+
+\mdparagraph{Aggregate EPFD From Visible Satellites}
+The aggregate EPFD at the protected GS contributed by all visible LEO satellites in time slot $t$ is
+\begin{equation}
+\mathrm{EPFD}_{\mathrm{agg}}(t)=
+\sum_{s\in\mathcal{S}(t)} \mathrm{EPFD}_{s}^{\mathrm{sat}}(t).
+\label{eq:epfd_agg_sat}
+\end{equation}
+Equivalently,
+\begin{equation}
+\mathrm{EPFD}_{\mathrm{agg}}(t)=
+\sum_{s\in\mathcal{S}(t)}\sum_{b\in\mathcal{B}_s} \mathrm{EPFD}_{s,b}(t).
+\label{eq:epfd_agg_beam}
+\end{equation}
+
+\mdparagraph{EPFD Constraint}
+To ensure regulatory compliance under NGSO--GSO coexistence, the system must satisfy
+\begin{equation}
+\mathrm{EPFD}_{\mathrm{agg}}(t)\le \mathrm{EPFD}_{\mathrm{lim}},
+\label{eq:epfd_limit}
+\end{equation}
+where $\mathrm{EPFD}_{\mathrm{lim}}$ is the applicable EPFD regulatory limit for the considered scenario and reference bandwidth.
+
+If $\mathrm{EPFD}_{\mathrm{agg}}(t)>\mathrm{EPFD}_{\mathrm{lim}}$ in a given time slot, the total interference produced at the protected GS under full-power transmission exceeds the allowable level. The system must then apply resource adjustment mechanisms such as beam shutdown or user reassociation to reduce the beam-level contributions and restore regulatory compliance.
+
+\subsection{Problem Formulation}
+\label{sec:problem_formulation}
+
+Based on the system model above, the objective of this work is to maximize the overall user satisfaction subject to the EPFD regulatory constraint. The joint optimization problem is formulated as follows.
+
+\mdparagraph{Variables}
+The optimization variables are the user--beam association indicators $\{x_{u,s,b}(t)\}$ and the beam on/off indicators $\{y_{s,b}(t)\}$.
+
+\mdparagraph{Objective function}
+\begin{equation}
+\max_{\{x_{u,s,b}(t)\},\{y_{s,b}(t)\}}
+\sum_{u\in\mathcal{U}(t)} \mathrm{sat}_u(t).
+\label{eq:prob_obj}
+\end{equation}
+
+\mdparagraph{Constraints}
+\begin{equation}
+x_{u,s,b}(t)=0,
+\quad \forall u\notin\mathcal{C}_{s,b}(t),
+\label{eq:prob_coverage}
+\end{equation}
+\begin{equation}
+\sum_{s\in\mathcal{S}(t)}\sum_{b\in\mathcal{B}_s} x_{u,s,b}(t)\le 1,
+\quad \forall u\in\mathcal{U}(t),
+\label{eq:prob_association}
+\end{equation}
+\begin{equation}
+\begin{split}
+P_{s,b}(t)&=y_{s,b}(t)\,P_{s,b}^{\max},\\
+&\forall s\in\mathcal{S}(t),\ \forall b\in\mathcal{B}_s,
+\end{split}
+\label{eq:prob_power}
+\end{equation}
+\begin{equation}
+\mathrm{EPFD}_{\mathrm{agg}}(t)\le \mathrm{EPFD}_{\mathrm{lim}}.
+\label{eq:prob_epfd}
+\end{equation}
+
+Constraint~\eqref{eq:prob_coverage} prohibits association outside the beam footprint.
+
+Constraint~\eqref{eq:prob_association} ensures that each user is served by at most one satellite--beam pair in each time slot.
+
+Constraint~\eqref{eq:prob_power} restricts each beam to either full power $P_{s,b}^{\max}$ or shutdown ($P_{s,b}=0$).
+
+Constraint~\eqref{eq:prob_epfd} enforces the aggregate EPFD regulatory limit at the protected GS.
+
+The objective in~\eqref{eq:prob_obj} maximizes the aggregate satisfaction of all users in the visible LEO system under the EPFD protection constraint. Because the LEO geometry changes over time, this optimization problem must be solved repeatedly in each time slot.
+
+\mdsubsubsection[sssec:complexity]{Discussion on Problem Complexity}
+The optimization problem formulated above is a highly complex mixed-integer nonlinear program. In particular, beam shutdown affects both user-side SINR and GS-side aggregate EPFD, while user reassociation changes beam loading and therefore the TDMA-based service rate and user satisfaction. Obtaining a global optimum is therefore computationally prohibitive in practice.
+
+For this reason, the next chapter presents a staged heuristic framework that progressively applies beam shutdown and user reassociation while satisfying the EPFD constraint, so as to improve overall user satisfaction.

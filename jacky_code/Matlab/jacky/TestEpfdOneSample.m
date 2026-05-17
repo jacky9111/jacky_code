@@ -53,7 +53,7 @@ tAxis = tAxis / max(norm(tAxis), eps);
 
 thH = atan2d(dot(dHat, cAxis), dot(dHat, bHat));
 thV = atan2d(dot(dHat, tAxis), dot(dHat, bHat));
-inBeam = (abs(thH) <= opts.beamHalfEW_deg) && (abs(thV) <= opts.beamHalfNS_deg);
+inBeam = gsInBeamFootprint(thH, thV, opts.beamHalfEW_deg, opts.beamHalfNS_deg, opts.params);
 
 phi_t = acosd(max(-1, min(1, dot(bHat, dHat))));
 Gt_lin = max(P.A_fit * exp(P.beta_fit * phi_t), 1e-30);

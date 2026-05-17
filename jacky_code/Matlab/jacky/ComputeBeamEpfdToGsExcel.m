@@ -294,12 +294,12 @@ for iSat = 1:numel(satList)
                 epfdLin = 0;
                 phit = NaN;
                 alpha = NaN;
-                inBeamNow = false;
+                inBeamNow = NaN;
             else
                 d_hat = v_gs_m / d_m;
                 th_h = atan2d(dot(d_hat, c_axis), dot(d_hat, b_hat));
                 th_v = atan2d(dot(d_hat, t_axis), dot(d_hat, b_hat));
-                inBeamNow = (abs(th_h) <= opts.beamHalfEW_deg) && (abs(th_v) <= opts.beamHalfNS_deg);
+                inBeamNow = gsInBeamFootprint(th_h, th_v, opts.beamHalfEW_deg, opts.beamHalfNS_deg, P);
 
                 phit = angleDeg(b_hat, d_hat);
                 Gt_lin = max(P.A_fit * exp(P.beta_fit * phit), 1e-30);

@@ -77,18 +77,28 @@ satUserTargets = [
     "P01_S01"
     "P01_S02"
     "P01_S49"
+    "P01_S48"
+    "P01_S47"
     "P02_S01"
     "P02_S02"
     "P02_S49"
+    "P02_S48"
+    "P02_S47"
     "P03_S01"
     "P03_S02"
     "P03_S49"
+    "P03_S48"
+    "P03_S47"
     "P04_S01"
     "P04_S02"
     "P04_S49"
+    "P04_S48"
+    "P04_S47"
     "P05_S01"
     "P05_S02"
     "P05_S49"
+    "P05_S48"
+    "P05_S47"
 ];
 AddUsersAroundSatellitesToSTK(root, satUserTargets, 1888, 30);
 
@@ -101,18 +111,28 @@ leo_part = [
     "P01_S01"
     "P01_S02"
     "P01_S49"
+    "P01_S48"
+    "P01_S47"
     "P02_S01"
     "P02_S02"
     "P02_S49"
+    "P02_S48"
+    "P02_S47"
     "P03_S01"
     "P03_S02"
     "P03_S49"
+    "P03_S48"
+    "P03_S47"
     "P04_S01"
     "P04_S02"
     "P04_S49"
+    "P04_S48"
+    "P04_S47"
     "P05_S01"
     "P05_S02"
     "P05_S49"
+    "P05_S48"
+    "P05_S47"
 ];
 
 geo_part = [
@@ -223,9 +243,10 @@ optsBeamEpfd.gsName = "GS_01";
 optsBeamEpfd.tStr = tEpochStr;
 optsBeamEpfd.areaSide_km = 1888;
 optsBeamEpfd.params = optsEpfd.params;
-optsBeamEpfd.params.useEIRPDensityModel = false; % use total power model, then split by user load
-optsBeamEpfd.params.Ptotal_W = 16.8; % total transmit power per satellite, W
-optsBeamEpfd.userDemand_Mbps = 150;
+optsBeamEpfd.params.useEIRPDensityModel = true; % OneWeb filing EIRP density (see ku_epfd_params.m)
+optsBeamEpfd.params.EIRPdens_dBW_per_4kHz = -13.4;
+optsBeamEpfd.params.Ptotal_W = 16.8; % used only when useEIRPDensityModel is false
+optsBeamEpfd.userDemand_Mbps = 50;
 optsBeamEpfd.limitPowerToDemand = true;
 optsBeamEpfd.beamHalfEW_deg = 36.5;
 optsBeamEpfd.beamHalfNS_deg = 36.0 / 16;
@@ -249,19 +270,52 @@ optsBeamEpfd.previousBeamPowerScale = 0.2;
 optsBeamEpfd.excelPath = char(fullfile(file_path, 'Matlab_data', 'Beam_EPFD_GS01_CurrentEpoch.xlsx'));
 ComputeBeamEpfdToGsExcel(root, optsBeamEpfd);
 
-optsOffload = optsBeamEpfd;
-optsOffload.sourceSatellite = "P03_S01";
-optsOffload.minAcceptSatisfaction = 0.2;
-optsOffload.sourceSafeBeamCount = 3;
-optsOffload.resultExcelPath = char(fullfile(file_path, 'Matlab_data', 'P03_S01_Offloading_CurrentEpoch.xlsx'));
-RunSourceBeamOffloadingAtEpoch(root, optsOffload);
+satShutdownPlotTargets = ["P03_S01", "P03_S49", "P03_S48"];
+
+optsFullPowerSweep = struct();
+optsFullPowerSweep.satList = satUserTargets;
+optsFullPowerSweep.geoList = "IdealGSO_GS01";
+optsFullPowerSweep.useIdealGsoAtGs = true;
+optsFullPowerSweep.gsName = "GS_01";
+optsFullPowerSweep.gsLat_deg = 0;
+optsFullPowerSweep.gsLon_deg = 120;
+optsFullPowerSweep.gsAlt_km = 0;
+optsFullPowerSweep.tStartStr = "16 Dec 2025 12:11:13";
+optsFullPowerSweep.tEndStr = "16 Dec 2025 12:13:19";
+optsFullPowerSweep.stepSec = 2;
+optsFullPowerSweep.beamHalfEW_deg = optsBeamEpfd.beamHalfEW_deg;
+optsFullPowerSweep.beamHalfNS_deg = optsBeamEpfd.beamHalfNS_deg;
+optsFullPowerSweep.fullBeamPower_W = 1.05; % ignored when useEIRPDensityModel is true
+optsFullPowerSweep.params = optsEpfd.params;
+optsFullPowerSweep.params.useEIRPDensityModel = false;
+optsFullPowerSweep.params.EIRPdens_dBW_per_4kHz = -13.4;
+optsFullPowerSweep.userDemand_Mbps = optsBeamEpfd.userDemand_Mbps;
+optsFullPowerSweep.satisfactionSatList = satShutdownPlotTargets;
+optsFullPowerSweep.excelPath = char(fullfile(file_path, 'Matlab_data', 'FullPower_BeamShutdownSweep_GS01.xlsx'));
+RunFullPowerAggregateShutdownSweepExcel(root, optsFullPowerSweep);
 
 
 %% ================== User field 平面圖 ==================
 
 PlotUserFieldPlanarMap(root, satUserTargets, "GS_01", optsBeamEpfd.areaSide_km, tEpochStr, "User_", optsBeamEpfd.excelPath);
 PlotUserFieldPlanarMapServedUsers(root, satUserTargets, "GS_01", optsBeamEpfd.areaSide_km, tEpochStr, "User_", optsBeamEpfd.excelPath);
-PlotOffloadingResultPlanarMap(root, satUserTargets, "GS_01", optsBeamEpfd.areaSide_km, tEpochStr, "User_", optsOffload.resultExcelPath);
+
+optsShutdownFrames = struct();
+optsShutdownFrames.showFigures = false;
+optsShutdownFrames.savePng = true;
+optsShutdownFrames.skipUnchanged = false;
+optsShutdownFrames.useSimulatedGs = true;
+% Plot GS (map marker / fixed axes); independent from sweep EPFD GS in optsFullPowerSweep
+optsShutdownFrames.plotGsLat_deg = 0;
+optsShutdownFrames.plotGsLon_deg = 122;
+optsShutdownFrames.fixedAxesOnGs = true;
+optsShutdownFrames.showMotionTrail = true;
+optsShutdownFrames.snapSatellitesToGroundTrack = true;
+optsShutdownFrames.plotEveryTimeSlot = true;
+optsShutdownFrames.tStartStr = optsFullPowerSweep.tStartStr;
+optsShutdownFrames.tEndStr = optsFullPowerSweep.tEndStr;
+optsShutdownFrames.stepSec = optsFullPowerSweep.stepSec;
+PlotFullPowerShutdownSweepFrames(root, satShutdownPlotTargets, "GS_01", optsBeamEpfd.areaSide_km, optsFullPowerSweep.excelPath, optsShutdownFrames);
 
 
 

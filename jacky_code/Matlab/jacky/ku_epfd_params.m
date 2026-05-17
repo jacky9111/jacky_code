@@ -49,6 +49,7 @@ function P = ku_epfd_params()
     P.Nbeam = 16;
 
     P.min_elev_deg = 10;
+    P.useInBeamFootprint = false; % if true: report GS-in-footprint; never gates EPFD in jacky runners
     P.B_Hz = 250e6; % user-link bandwidth for SINR/capacity evaluation
     P.Nchannel = 8; % fixed Ku user channels; beam b -> channel mod(b-1,Nchannel)+1 in baseline runner
 end

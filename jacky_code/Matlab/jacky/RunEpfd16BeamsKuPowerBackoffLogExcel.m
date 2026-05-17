@@ -185,7 +185,7 @@ for t = tStart:step:tEnd
         b_all = reorderBoresightsNorthToSouth(P_leo*1000, b_all);
 
         term = zeros(Nbeam, Ngeo); % full-power beam terms
-        inb = false(Nbeam, Ngeo); % coverage footprint (debug/report only)
+        inb = nan(Nbeam, Ngeo); % debug/report only (NaN when useInBeamFootprint is false)
         for b = 1:Nbeam
             b_hat = b_all(:,b);
             t_axis = cross(c_axis, b_hat); t_axis = t_axis / max(norm(t_axis), eps);
@@ -200,7 +200,7 @@ for t = tStart:step:tEnd
                 % thH/thV are off-nadir components in EW/NS plane.
                 th_h = atan2d(dot(d_hat, c_axis), dot(d_hat, b_hat));
                 th_v = atan2d(dot(d_hat, t_axis), dot(d_hat, b_hat));
-                inb(b,j) = (abs(th_h) <= opts.beamHalfEW_deg) && (abs(th_v) <= opts.beamHalfNS_deg);
+                inb(b,j) = gsInBeamFootprint(th_h, th_v, opts.beamHalfEW_deg, opts.beamHalfNS_deg, P);
 
                 phit = angleDeg(b_hat, d_hat);
                 Gt_lin = max(P.A_fit * exp(P.beta_fit * phit), 1e-30);

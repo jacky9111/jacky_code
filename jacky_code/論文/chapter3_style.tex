@@ -1,0 +1,19 @@
+% Reference style (like IEEE paper): **Label:** regular body text on the same line.
+% - Label before colon: bold (bfseries)
+% - Following text: normal weight (mdseries / normalfont)
+\makeatletter
+\newcommand{\md@runinlabel}[1]{{\bfseries #1}\normalfont}
+\newcommand{\mdsubsubsection}[2][]{%
+  \refstepcounter{subsubsection}%
+  \par\vspace{0.35ex}%
+  \noindent\md@runinlabel{\arabic{subsubsection})~#2:}\space
+  \def\@mdss@label{#1}%
+  \ifx\@mdss@label\@empty\else\label{#1}\fi
+}
+\newcommand{\mdparagraph}[2][]{%
+  \par\vspace{0.25ex}%
+  \noindent\md@runinlabel{#2:}\space
+  \def\@mdpar@label{#1}%
+  \ifx\@mdpar@label\@empty\else\label{#1}\fi
+}
+\makeatother
