@@ -50,19 +50,15 @@ try
     tEpochStr = char(sc.StartTime);
 catch
 end
-leo = CreateWalkerConstellation_HPOP( ...
+CreateWalkerConstellation_HPOP( ...
     root, sc, alt_km, inc_deg, numPlanes, satsPerPlane, tEpochStr);
 
-% 只對指定軌道面建 RectBeam：衛星命名為 Pxx_Syy，只保留 P02_*, P03_*, P17_*, P18_*
-rectBeamPlanes = [1,2,3,4,5];
-maskRect = false(size(leo));
-for kp = 1:numel(rectBeamPlanes)
-    maskRect = maskRect | startsWith(leo, sprintf('P%02d_', rectBeamPlanes(kp)));
-end
-leoRectBeam = leo(maskRect);
-% CreateWalkerConstellation_HPOP 使用 p=2:numPlanes；要有 P17/P18 須 numPlanes >= 18
+% 只對指定軌道面建 RectBeam：從 STK 場景讀衛星（Pxx_Syy），不依賴建星回傳的 leo
+rectBeamPlanes = [3];
+leoRectBeam = GetStkSatelliteNamesByPlane(root, rectBeamPlanes);
 if isempty(leoRectBeam)
-    warning('jacky:RectBeamEmpty', 'leoRectBeam is empty; raise numPlanes (need >=18 for P17/P18) or check plane list.');
+    warning('jacky:RectBeamEmpty', ...
+        'leoRectBeam is empty; check rectBeamPlanes or satellites in the STK scenario.');
 end
 
 %% ================== 建立 beam（STK 僅單一大矩形）==================
@@ -272,28 +268,97 @@ ComputeBeamEpfdToGsExcel(root, optsBeamEpfd);
 
 satShutdownPlotTargets = ["P03_S01", "P03_S49", "P03_S48"];
 
+% RectBeam -5 dB（與 CreateOneWebRectBeam）：EW half=34°, NS half=33.5°
+% 在 h=1200 km、星下點近似：足跡約 1619 km（東西）× 1589 km（南北）
+sweepAlt_km = alt_km;
+rectBeamHalfEW_deg = 34.0;
+rectBeamHalfNS_deg = 33.5;
+footprintEW_km = 2 * sweepAlt_km * tand(rectBeamHalfEW_deg);
+footprintNS_km = 2 * sweepAlt_km * tand(rectBeamHalfNS_deg);
+
 optsFullPowerSweep = struct();
 optsFullPowerSweep.satList = satUserTargets;
 optsFullPowerSweep.geoList = "IdealGSO_GS01";
 optsFullPowerSweep.useIdealGsoAtGs = true;
 optsFullPowerSweep.gsName = "GS_01";
 optsFullPowerSweep.gsLat_deg = 0;
-optsFullPowerSweep.gsLon_deg = 120;
+optsFullPowerSweep.gsLon_deg = 120.4;
 optsFullPowerSweep.gsAlt_km = 0;
-optsFullPowerSweep.tStartStr = "16 Dec 2025 12:11:13";
-optsFullPowerSweep.tEndStr = "16 Dec 2025 12:13:19";
+optsFullPowerSweep.tStartStr = "16 Dec 2025 12:11:27";
+optsFullPowerSweep.tEndStr = "16 Dec 2025 12:13:07";
 optsFullPowerSweep.stepSec = 2;
-optsFullPowerSweep.beamHalfEW_deg = optsBeamEpfd.beamHalfEW_deg;
-optsFullPowerSweep.beamHalfNS_deg = optsBeamEpfd.beamHalfNS_deg;
-optsFullPowerSweep.fullBeamPower_W = 1.05; % ignored when useEIRPDensityModel is true
+optsFullPowerSweep.beamHalfEW_deg = rectBeamHalfEW_deg;
+optsFullPowerSweep.beamHalfNS_deg = rectBeamHalfNS_deg / 16; % 16 束南北疊成整體 33.5°
+optsFullPowerSweep.fullBeamPower_W = 0.85; % nominal on-air when beam is on (EPFD backoff)
+optsFullPowerSweep.maxBeamPower_W = 2; % per-beam budget cap for serve / power shift
 optsFullPowerSweep.params = optsEpfd.params;
 optsFullPowerSweep.params.useEIRPDensityModel = false;
 optsFullPowerSweep.params.EIRPdens_dBW_per_4kHz = -13.4;
 optsFullPowerSweep.userDemand_Mbps = optsBeamEpfd.userDemand_Mbps;
+optsFullPowerSweep.useSimulatedUsers = true;
+optsFullPowerSweep.reassignUsersEachSlot = true;
+optsFullPowerSweep.userPlacementSatList = leo_part;
+numUsersPerSatSweep = 50;   % sweep 模擬：每顆衛星 user 數（也寫進 Excel 檔名 U50）
+numUsersPerSatPlot = 50; % 畫圖讀哪個 U* 的 Excel；只重畫可改這裡（例：70）
+optsFullPowerSweep.numUsersPerSatellite = numUsersPerSatSweep;
+optsFullPowerSweep.userAreaSide_km = max(footprintEW_km, footprintNS_km);
 optsFullPowerSweep.satisfactionSatList = satShutdownPlotTargets;
-optsFullPowerSweep.excelPath = char(fullfile(file_path, 'Matlab_data', 'FullPower_BeamShutdownSweep_GS01.xlsx'));
-RunFullPowerAggregateShutdownSweepExcel(root, optsFullPowerSweep);
+optsFullPowerSweep.enableRelay = true;
+optsFullPowerSweep.relayMinNativeSat = 0.9;
+optsFullPowerSweep.satisfactionRecordSatList = satShutdownPlotTargets; % 家鄉衛星 cohort（含被 relay 走的 user）
 
+optsFullPowerSweepRelayOnly = optsFullPowerSweep;
+optsFullPowerSweepRelayOnly.enableMiddleHelperSwap = false;
+optsFullPowerSweepRelayOnly.excelPath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatSweep, 'RelayOnly'));
+RunFullPowerAggregateShutdownSweepExcel(root, optsFullPowerSweepRelayOnly);
+
+optsFullPowerSweepWithSwap = optsFullPowerSweep;
+optsFullPowerSweepWithSwap.enableMiddleHelperSwap = true;
+optsFullPowerSweepWithSwap.excelPath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatSweep, 'RelayWithMiddleSwap'));
+RunFullPowerAggregateShutdownSweepExcel(root, optsFullPowerSweepWithSwap);
+
+% 無功率上限：每束先 1.05 W，relay 前將 helper 全衛星可挪功率（含 swap 釋出）分到 relay 波束
+optsFullPowerSweepUnlimitedPool = optsFullPowerSweepWithSwap;
+optsFullPowerSweepUnlimitedPool.relayPowerShiftMode = "helperSatPoolUnlimited";
+optsFullPowerSweepUnlimitedPool.beamAllocatePower_W = 1.05;
+optsFullPowerSweepUnlimitedPool.enforceMaxBeamPowerCap = false;
+optsFullPowerSweepUnlimitedPool.excelPath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatSweep, 'RelayUnlimitedPool'));
+RunFullPowerAggregateShutdownSweepExcel(root, optsFullPowerSweepUnlimitedPool);
+
+% 畫圖：Relay only vs Relay + middle swap（讀 Matlab_data 內 U<numUsersPerSatPlot> 的 xlsx）
+optsSatVsLat = struct();
+optsSatVsLat.compareExcelPaths = [
+    string(FullPowerSweepDataPathLocal(file_path, numUsersPerSatPlot, 'RelayOnly'))
+    string(FullPowerSweepDataPathLocal(file_path, numUsersPerSatPlot, 'RelayWithMiddleSwap'))];
+optsSatVsLat.compareLabels = ["Relay only", "Relay + middle swap"];
+optsSatVsLat.satNames = "P03_S49";
+optsSatVsLat.gsLat_deg = optsFullPowerSweep.gsLat_deg;
+optsSatVsLat.latitudeWindowDeg = 20;
+optsSatVsLat.plotNoRelay = false;
+optsSatVsLat.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_SatisfactionVsLat_RelayOnlyVsSwap', '.png'));
+optsSatVsLat.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_SatisfactionVsLat_RelayOnlyVsSwap', '.xlsx'));
+PlotFullPowerSweepSatisfactionVsLatitude(root, optsSatVsLat);
+
+% 畫圖：無 middle swap vs unlimited pool（含 swap + 全衛星挪功率）
+optsSatVsLatUnlimited = struct();
+optsSatVsLatUnlimited.compareExcelPaths = [
+    string(FullPowerSweepDataPathLocal(file_path, numUsersPerSatPlot, 'RelayOnly'))
+    string(FullPowerSweepDataPathLocal(file_path, numUsersPerSatPlot, 'RelayUnlimitedPool'))];
+optsSatVsLatUnlimited.compareLabels = ["Relay only (no swap)", "Relay unlimited pool (+ swap)"];
+optsSatVsLatUnlimited.satNames = "P03_S49";
+optsSatVsLatUnlimited.gsLat_deg = optsFullPowerSweep.gsLat_deg;
+optsSatVsLatUnlimited.latitudeWindowDeg = 20;
+optsSatVsLatUnlimited.plotNoRelay = false;
+optsSatVsLatUnlimited.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_SatisfactionVsLat_RelayOnlyVsUnlimitedPool', '.png'));
+optsSatVsLatUnlimited.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_SatisfactionVsLat_RelayOnlyVsUnlimitedPool', '.xlsx'));
+PlotFullPowerSweepSatisfactionVsLatitude(root, optsSatVsLatUnlimited);
 
 %% ================== User field 平面圖 ==================
 
@@ -315,7 +380,8 @@ optsShutdownFrames.plotEveryTimeSlot = true;
 optsShutdownFrames.tStartStr = optsFullPowerSweep.tStartStr;
 optsShutdownFrames.tEndStr = optsFullPowerSweep.tEndStr;
 optsShutdownFrames.stepSec = optsFullPowerSweep.stepSec;
-PlotFullPowerShutdownSweepFrames(root, satShutdownPlotTargets, "GS_01", optsBeamEpfd.areaSide_km, optsFullPowerSweep.excelPath, optsShutdownFrames);
+PlotFullPowerShutdownSweepFrames(root, satShutdownPlotTargets, "GS_01", optsBeamEpfd.areaSide_km, ...
+    optsFullPowerSweepWithSwap.excelPath, optsShutdownFrames);
 
 
 

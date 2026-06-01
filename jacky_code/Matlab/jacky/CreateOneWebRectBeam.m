@@ -30,8 +30,8 @@ beamProfile = string(beamProfile);
 % -5 dB: engineering expanded estimate from FCC contour extension
 switch lower(strrep(beamProfile, " ", ""))
     case {"-5db","5db","minus5db"}
-        beamHalfH = 36.5;
-        beamHalfV = 36.0;
+        beamHalfH = 34.0;
+        beamHalfV = 33.5;
         beamProfileLabel = "-5 dB (estimated)";
     otherwise
         beamHalfH = 25.0;
@@ -43,7 +43,7 @@ targetSats = string(targetSats);
 
 fprintf("建立 OneWeb 大長方形 beam（單一 Sensor｜Nadir pointing｜%s）\n", beamProfileLabel);
 
-for i = 1:numel(targetSats)
+for i = 1:3
     satName = char(targetSats(i));
     fprintf("Processing %s\n", satName);
 

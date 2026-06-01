@@ -1,229 +1,339 @@
-% Auto-generated from word_IV_v1.docx (Chapter 4)
-% NOTE: This file is intended to be included from main.tex via \input{chapter4}.
-% If you want to compile this file alone, compile `chapter4_standalone.tex` instead.
+% Generated from word_IV_v1.docx (Chapter 4 — SAPR-R)
+% Include from main.tex via \input{chapter4}; compile chapter4_standalone.tex for preview.
+
+\input{chapter3_style}
 
 \section{Method}
 \label{sec:chapter4}
 
-\subsection{Overview of the Proposed Framework}
+\subsection{Method Overview}
 
-根據第三章所建立之系統模型，本文之核心目標是在滿足 GSO ground station 保護要求的前提下，盡可能提升 LEO 系統中 users 的整體 satisfaction。由於當 critical satellite 接近受保護 GS 正上方時，其部分 beams 可能因 EPFD constraint 而被大幅降功率，導致 beam 內 users 的服務品質顯著下降，因此僅依靠 beam-level power allocation 難以同時兼顧法規合規性與使用者服務表現。
+第三章已將本文問題表述為在 user association、beam power、satellite total power 與 EPFD constraints 下最大化 total user satisfaction 的最佳化問題。然而，該問題同時包含離散的 user--beam association decision 與連續的 beam power configuration，且 association、SINR、TDMA sharing、satisfaction 與 aggregate EPFD 彼此耦合，因此直接求解全域最佳解具有較高計算複雜度。
 
-基於此，本文提出一套 EPFD-constrained power control and bidirectional relay framework。該方法分為兩個主要階段。第一階段先根據各 beam 對 GS 的 EPFD contribution 執行 power control，使整體 aggregate EPFD 回到法規限制內。第二階段再針對 critical satellite 上因 power control 而受影響之低滿足率 users，透過同軌道 north/south neighboring satellites 執行跨衛星 reassociation，以恢復其服務品質。若單向 relay 導致 helper satellites 過載，則進一步允許 source 與 helper 之間進行反向 reassociation，形成 bidirectional load balancing，以避免 helper 成為新的 bottleneck。
+為降低 online decision complexity，本文提出一套 Safe-Beam Assisted Power-Release Relay (SAPR-R) 方法。SAPR-R 利用 LEO constellation、protected GS location、GSO direction 與 fixed beam layout 的可預測性，先針對整個觀察期間的所有 time slots 建立 beam-level relation records。對於每個 time slot，系統預先記錄 critical satellite、north/south helper satellites、critical satellite 上需關閉的 beams、仍可運作的 safe beams，以及 critical beams 與 helper beams 之間的 beam-pair mappings。此階段僅依賴 satellite geometry、beam footprint 與 EPFD calculation，不需要 user distribution，因此可於 online user reassociation 前完成。
 
-整體而言，本文方法並非直接追求單一 user 之局部改善，而是在每次 reassociation 後重新計算 beam power、SINR、capacity、TDMA rate、user satisfaction 與 aggregate EPFD，並僅在整體 satisfaction 提升且 EPFD 仍合法時才接受該次調整。因此，本文方法可視為一套在法規限制下兼顧服務品質之逐步式資源重配置機制。
+在 online operation 階段，系統讀取當前 time slot 的 beam relation record，並根據當下 users 的位置與 association 執行 user-aware relay decision。首先，SAPR-R 透過 Safe-Beam Assisted Helper Relief (SAHR) 使 critical safe beams 嘗試接手 helper release beams 上的部分 users。若 reassociation 不降低被轉移 user 與 safe beam 原本 users 的 satisfaction，則接受此次轉移，並將 helper release beam 所釋放出的功率回收到 helper satellite 的 available power pool。接著，helper satellite 依據 relay demand 將 power pool 分配給 helper relay beams，以提升其後續接手 closed-beam users 的 capacity。最後，SAPR-R 透過 Beam-Pair Local Relay (BPLR)，在每組 closed beam/helper relay beam pair 內，依據 relay link quality 對 critical closed-beam users 進行排序與 sequential allocation。
 
-\subsection{EPFD-Driven Power Control}
+綜合而言，本文方法包含下列步驟：
+\begin{itemize}[leftmargin=*,nosep]
+  \item \textbf{Time-slot beam relation record:} 預先記錄每個 time slot 的 critical/helper satellites、closed/safe beams 與 beam-pair mappings。
+  \item \textbf{Safe-Beam Assisted Helper Relief (SAHR):} 利用 critical safe beams 接手部分 helper users，在不降低 satisfaction 的條件下釋放 helper satellite power。
+  \item \textbf{Helper relay beam boosting:} 依據 relay demand 將 available power pool 分配給 helper relay beams。
+  \item \textbf{Beam-Pair Local Relay (BPLR):} 在每組 beam pair 內，依 relay link quality 分配 relay capacity 給 closed-beam users。
+\end{itemize}
 
-在每一個 time slot $t$ 中，系統首先依第三章之 beam-level EPFD model，計算所有可視衛星 active beams 對受保護 GS 的 EPFD contributions。對 beam $b$ 而言，其 contribution 為 $\mathrm{EPFD}_{s,b}(t)$，而整體 aggregate EPFD 為
-\[
-\mathrm{EPFD}_{\mathrm{agg}}(t)=
-\sum_{s\in\mathcal{S}(t)}\sum_{b\in\mathcal{B}_s}\mathrm{EPFD}_{s,b}(t).
-\]
+\subsection{Time-Slot Beam Relation Record}
 
-若初始 beam-level power allocation 下的 $\mathrm{EPFD}_{\mathrm{agg}}(t)$ 已滿足
-\[
-\mathrm{EPFD}_{\mathrm{agg}}(t)\le \mathrm{EPFD}_{\mathrm{lim}},
-\]
-則系統無需額外進行功率調整；反之，若 aggregate EPFD 超出限制，則必須啟動 power control。
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{ch4_beam_relation_record}
+  \caption{三個 time slots 中，沿軌道方向之三顆 LEO 衛星（$s^{\mathrm{N}}$、$s^{\mathrm{c}}$、$s^{\mathrm{S}}$）飛過受保護 GSO 地面站之示意。critical 衛星區域 $S_{\mathrm{C}}$ 內，黑色斜線為 $\mathcal{B}_c^{\mathrm{off}}(t)$（closed beams），綠色斜線為 $\mathcal{B}_c^{\mathrm{safe}}(t)$（safe beams）。(a)--(c) 為由早至晚之 time slot。}
+  \label{fig:ch4_beam_relation_record}
+\end{figure*}
 
-本文採用 beam-level EPFD-driven power reduction。具體而言，系統首先根據各 beams 的 EPFD contribution 大小進行排序，優先選擇目前對 GS 干擾貢獻最大的 beam，逐步降低其發射功率。功率降低後，該 beam 所服務 users 的 SINR 與實際服務速率亦隨之下降，因此其 satisfaction 也會同步降低。為避免個別 beam 被過度壓制，本文對每個受控 beam 設定一個最低殘餘服務門檻，在 EPFD-first power control 下，系統對受影響 beam 所保留的最基本服務水準。其目的並非保證使用者體驗仍然良好，而是避免 beam 在未正式關閉或轉交 relay 前，已被壓低到近似失效的狀態。
+對於每一個 time slot $t$，本文建立一個 beam relation record $\mathcal{R}_B(t)$。圖~\ref{fig:ch4_beam_relation_record} 示意本文所考慮之 time-slot beam 狀態，包括：
+\begin{equation*}
+\begin{split}
+\mathcal{R}_B(t)=\bigl(
+& s^{\mathrm{c}}(t),\,
+s^{\mathrm{N}}(t),\,
+s^{\mathrm{S}}(t), \\
+& \mathcal{B}_c^{\mathrm{off}}(t),\,
+\mathcal{B}_c^{\mathrm{safe}}(t), \\
+& \mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t),\,
+\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)
+\bigr).
+\end{split}
+\end{equation*}
+該 record 儲存後續 SAHR 與 BPLR 所需的 beam-level information，其中 $s^{\mathrm{c}}(t)$、$s^{\mathrm{N}}(t)$ 與 $s^{\mathrm{S}}(t)$ 分別為 critical satellite、north helper satellite 與 south helper satellite。$\mathcal{B}_c^{\mathrm{off}}(t)$ 為 critical satellite 上因 EPFD constraint 需被關閉的 beams，$\mathcal{B}_c^{\mathrm{safe}}(t)$ 為未被關閉且維持 baseline power 的 safe beams。$\mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$ 與 $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$ 分別表示 safe-beam-to-helper-release-beam mapping 與 closed-beam-to-helper-relay-beam mapping。
 
-設衛星 $s$ 之 beam $b$ 在功率 $P$ 下，其服務 users 的平均 satisfaction 為
-\[
-\bar{S}_{s,b}(P)=
-\frac{1}{|\mathcal{U}_{s,b}(t)|}
-\sum_{u\in\mathcal{U}_{s,b}(t)} \mathrm{sat}_u(P),
-\]
-則其最低殘餘服務功率可定義為
-\[
-P_{s,b}^{\mathrm{res}}(t)=
-\min\left\{P:\bar{S}_{s,b}(P)\ge \rho_{\mathrm{res}}\right\},
-\]
-其中 $\rho_{\mathrm{res}}$ 為最低殘餘服務門檻。
+\mdsubsubsection{Critical and Helper Satellite Identification}
+在每個 time slot $t$，系統根據 LEO satellite 與 protected GS 之間的幾何關係，找出對 GS 造成主要 EPFD 風險的 critical satellite：
+\begin{equation*}
+s^{\mathrm{c}}(t).
+\end{equation*}
+根據模擬觀察，EPFD violation 主要由 critical satellite 上的 high-risk beams 主導，因此本文僅針對 $s^{\mathrm{c}}(t)$ 上的 beams 進行 shutdown decision，不關閉 helper satellites 或其他 visible satellites 的 beams。接著，選取 critical satellite 同軌道方向上的 north neighbor 與 south neighbor 作為 helper satellites：
+\begin{equation*}
+s^{\mathrm{N}}(t),\quad s^{\mathrm{S}}(t).
+\end{equation*}
 
-當該 beam 之功率已降至 $P_{s,b}^{\mathrm{res}}(t)$ 且 aggregate EPFD 仍未回到限制內時，系統轉而處理下一個 EPFD contribution 最大的 beam。因此，在每個 time slot 中，power control 的執行邏輯可概括為：
-\begin{enumerate}
-    \item 計算所有 active beams 的 EPFD contribution；
-    \item 若 aggregate EPFD 超標，則優先降低最大 contribution beam 之功率；
-    \item 若該 beam 已達最低殘餘服務門檻但 aggregate EPFD 仍超標，則改處理下一個 beam；
-    \item 重複以上流程，直到 aggregate EPFD 回到限制內為止。
-\end{enumerate}
+\mdsubsubsection{EPFD-Driven Beam Status Determination}
+對每個 critical beam $b\in\mathcal{B}_{s^{\mathrm{c}}}$，定義其 EPFD risk score 為
+\begin{equation*}
+q_{c,b}(t)=\mathrm{EPFD}_{s^{\mathrm{c}},b}(t).
+\end{equation*}
+critical beams 依據 $q_{c,b}(t)$ 由大到小排序，並採用 greedy shutdown rule：每次關閉目前 EPFD risk score 最高的 beam，直到 aggregate EPFD 滿足
+\begin{equation*}
+\mathrm{EPFD}_{\mathrm{agg}}(t)\le \mathrm{EPFD}_{\mathrm{lim}}.
+\end{equation*}
+被關閉的 beams 組成
+\begin{equation*}
+\mathcal{B}_c^{\mathrm{off}}(t),
+\end{equation*}
+其餘 beams 則形成 safe beam set：
+\begin{equation*}
+\mathcal{B}_c^{\mathrm{safe}}(t)=\mathcal{B}_{s^{\mathrm{c}}}\setminus \mathcal{B}_c^{\mathrm{off}}(t).
+\end{equation*}
+此階段僅根據 beam-level EPFD contribution 與 regulatory limit 決定 beam status，不涉及 user distribution，因此可於 online user reassociation 前預先完成。
 
-經過此步驟後，雖然系統已重新滿足 EPFD 法規要求，但 critical satellite 上的部分 users 可能因 beam 功率遭明顯壓低而出現服務品質下降的情況。因此，後續需透過 relay/reassociation 進一步恢復整體 satisfaction。
+\mdsubsubsection{Beam-Pair Mapping Construction}
+在得到 $\mathcal{B}_c^{\mathrm{off}}(t)$ 與 $\mathcal{B}_c^{\mathrm{safe}}(t)$ 後，本文根據 beam footprint overlap 建立 beam-pair mappings。對於 SAHR，定義
+\begin{equation*}
+\begin{split}
+\mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)=
+\bigl\{
+&(b_c^{\mathrm{safe}},b_h^{\mathrm{rel}}) : \\
+&\mathcal{F}_{s^{\mathrm{c}},b_c^{\mathrm{safe}}}(t)\cap
+\mathcal{F}_{s_h,b_h^{\mathrm{rel}}}(t)\neq\emptyset, \\
+& s_h\in\{s^{\mathrm{N}}(t),s^{\mathrm{S}}(t)\}
+\bigr\},
+\end{split}
+\end{equation*}
+其中 $s_h\in\{s^{\mathrm{N}}(t),s^{\mathrm{S}}(t)\}$。此 mapping 用於找出 critical safe beam 可接手哪些 helper release beam 上的 users。
 
-\subsection{Distressed User Identification}
+對於 BPLR，定義
+\begin{equation*}
+\begin{split}
+\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)=
+\bigl\{
+&(b_c^{\mathrm{off}},b_h^{\mathrm{relay}}) : \\
+&\mathcal{F}_{s^{\mathrm{c}},b_c^{\mathrm{off}}}(t)\cap
+\mathcal{F}_{s_h,b_h^{\mathrm{relay}}}(t)\neq\emptyset
+\bigr\}.
+\end{split}
+\end{equation*}
+此 mapping 用於找出 critical closed-beam users 可由哪些 helper relay beams 接手。
 
-完成 EPFD-driven power control 後，系統將檢查 critical satellite 上各 users 的滿足率。由於本文之 relay 機制旨在補救 power control 所造成的服務品質下降，因此只有在 power control 後 satisfaction 顯著降低的 users，才會被視為候選 reassociation 對象。
+圖~\ref{fig:ch4_beam_pair_mapping} 呈現儲存於 $\mathcal{R}_B(t)$ 中的兩組 beam-pair mappings：$\mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$（SAHR）與 $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$（BPLR）。
 
-設 critical satellite 為 $s^{\star}(t)$，則其低滿足率 users 集合可定義為
-\[
-\mathcal{U}_{\mathrm{dis}}(t)=
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{ch4_beam_pair_mapping}
+  \caption{Time slot $t$ 之 beam-pair mapping 對照表。(a) $\mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$：$s^{\mathrm{c}}$ 上 safe beams 對應至 $s^{\mathrm{N}}$/$s^{\mathrm{S}}$ 之 helper release beams（SAHR）。(b) $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$：closed beams 對應至 helper relay beams（BPLR）。}
+  \label{fig:ch4_beam_pair_mapping}
+\end{figure*}
+
+本文考慮的 Walker-star constellation 與 fixed beam layout 使 critical satellite 與 north/south helper satellites 呈現近似 one-to-one beam overlap。具體而言，critical satellite 的 north-half beams 主要與 north helper satellite 的 south-half beams 重疊，而 critical satellite 的 south-half beams 主要與 south helper satellite 的 north-half beams 重疊。因此，後續 relay 可在 beam pair 內局部執行，而不需進行 global matching。
+
+此外，helper beams 分為 helper release beams 與 helper relay beams。前者用於釋放 helper satellite power，後者用於接手 critical closed-beam users。本文假設兩者於同一 time slot 中不重疊：
+\begin{equation*}
+\mathcal{B}_h^{\mathrm{rel}}(t)\cap \mathcal{B}_h^{\mathrm{relay}}(t)=\emptyset.
+\end{equation*}
+
+\subsection{Safe-Beam Assisted Helper Relief}
+
+讀取 $\mathcal{R}_B(t)$ 後，online 程序首先執行 SAHR。圖~\ref{fig:ch4_Safe-beam_assisted_power_release} 示意 SAHR 流程。此階段的目的不是直接接手 critical closed-beam users，而是利用 critical safe beams 接手部分 helper users，使 helper satellite 釋放功率，供後續 relay boosting 使用。
+
+對於
+\begin{equation*}
+(b_c^{\mathrm{safe}},b_h^{\mathrm{rel}})\in \mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t),
+\end{equation*}
+系統找出目前由 $b_h^{\mathrm{rel}}$ 服務，且同時位於 $b_c^{\mathrm{safe}}$ footprint 內的 helper users：
+\begin{equation*}
+\begin{split}
+&\mathcal{V}_{\mathrm{rel}}(b_c^{\mathrm{safe}},b_h^{\mathrm{rel}},t)= \\
+&\quad
 \left\{
-u\in\mathcal{U}_{s^{\star}}(t)\; \middle|\;
-\mathrm{sat}_u(t)<\rho_{\mathrm{dis}}
-\right\},
-\]
-其中 $\rho_{\mathrm{dis}}$ 為 distressed user 判斷門檻。當 user 的 satisfaction 低於此門檻時，代表其目前服務速率相較需求已有明顯不足，因此需要進一步考慮透過 neighboring satellites 執行 reassociation。
+v :
+v\in\mathcal{U}_{s_h,b_h^{\mathrm{rel}}}(t),\;
+v\in\mathcal{F}_{s^{\mathrm{c}},b_c^{\mathrm{safe}}}(t)
+\right\}.
+\end{split}
+\end{equation*}
+若將 candidate helper user $v$ reassociate 至 $b_c^{\mathrm{safe}}$，helper release beam 所需功率的下降量為
+\begin{equation*}
+\Delta P_v^{\mathrm{rel}}(t)=
+P_{b_h^{\mathrm{rel}}}^{\mathrm{req,old}}(t)-
+P_{b_h^{\mathrm{rel}}}^{\mathrm{req,new}}(v,t).
+\end{equation*}
+SAHR score 定義為
+\begin{equation*}
+S_{\mathrm{relief}}(v,t)=\Delta P_v^{\mathrm{rel}}(t).
+\end{equation*}
+candidate helper users 依據 $S_{\mathrm{relief}}(v,t)$ 由大到小排序。僅當被轉移 user 的 satisfaction 不下降，且 safe beam 原本 users 亦不下降時，才接受 reassociation：
+\begin{equation*}
+\mathrm{sat}_v^{\mathrm{safe}}(t)\ge \mathrm{sat}_v^{\mathrm{old}}(t),
+\end{equation*}
+\begin{equation*}
+\mathrm{sat}_w^{\mathrm{new}}(t)\ge \mathrm{sat}_w^{\mathrm{old}}(t),
+\qquad \forall w\in\mathcal{U}_{b_c^{\mathrm{safe}}}^{\mathrm{ori}}(t).
+\end{equation*}
+若條件成立，user $v$ 被 reassociate 至 critical safe beam，且 $\Delta P_v^{\mathrm{rel}}(t)$ 回到 helper satellite power pool。對於 helper satellite $s_h$，SAHR 釋放的總功率為
+\begin{equation*}
+P_{s_h}^{\mathrm{rel}}(t)=
+\sum_{v\in\mathcal{A}_{\mathrm{rel}}(s_h,t)} \Delta P_v^{\mathrm{rel}}(t),
+\end{equation*}
+其中 $\mathcal{A}_{\mathrm{rel}}(s_h,t)$ 為成功被 safe beams 接手的 helper users 集合。
 
-需特別強調的是，本文之 distressed user identification 是在 power control 完成後才進行。換言之，relay 並非在所有 time slots 中固定啟動，而是僅在特定幾何情況下，當 critical satellite 為了滿足 EPFD protection 而不得不壓低功率，進而導致部分 users 服務品質惡化時，才會被觸發。這樣的設計使 relay 成為一種 service recovery mechanism，而非一般性的連線切換策略。
+baseline operation 下原本未使用的功率為
+\begin{equation*}
+P_{s_h}^{\mathrm{unused}}(t)=
+P_{s_h}^{\max}-\sum_{b\in\mathcal{B}_{s_h}} P^{\mathrm{base}},
+\end{equation*}
+因此，後續可用於 relay boosting 的 power pool 為
+\begin{equation*}
+P_{s_h}^{\mathrm{pool}}(t)=
+P_{s_h}^{\mathrm{unused}}(t)+P_{s_h}^{\mathrm{rel}}(t).
+\end{equation*}
+除 helper release beams 與 helper relay beams 外，其餘 helper beams 皆維持 baseline power $P^{\mathrm{base}}$。
 
-\subsection{Post-PC One-Way Relay Trial}
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{ch4_Safe-beam_assisted_power_release}
+  \caption{Safe-Beam Assisted Helper Relief (SAHR) 示意。critical safe beams 接手 helper release beams 上符合條件的 users，所釋放功率回收到 helper satellite 的 power pool。}
+  \label{fig:ch4_Safe-beam_assisted_power_release}
+\end{figure*}
 
-在完成 EPFD-driven power control 後，系統進入 relay 階段。需特別強調的是，本文所提出之 relay 機制並非從原始 pre-PC 狀態開始，而是以 post-PC system state 作為唯一的起始基準。換言之，relay 階段的 user reassociation、beam load 更新與功率重分配，皆建立在 power control 完成後所保留下來的合法系統狀態之上。
+\subsection{Helper Relay Beam Boosting}
 
-設 power control 後 beam 的發射功率為 $P_{s,b}^{\mathrm{pc}}(t)$，則衛星 $s$ 在 relay 階段中的固定總功率預算定義為
-\[
-P_{s}^{\mathrm{relay}}(t)=
-\sum_{b\in\mathcal{B}_s} P_{s,b}^{\mathrm{pc}}(t).
-\]
+完成 SAHR 後，helper satellite $s_h$ 使用 $P_{s_h}^{\mathrm{pool}}(t)$ 提升 helper relay beams 的 transmit power。helper relay beams 由 $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$ 決定：
+\begin{equation*}
+\begin{split}
+\mathcal{B}_{s_h}^{\mathrm{relay}}(t)=
+\bigl\{
+&b_h^{\mathrm{relay}} :
+\exists\, b_c^{\mathrm{off}}\in\mathcal{B}_c^{\mathrm{off}}(t): \\
+&\qquad (b_c^{\mathrm{off}},b_h^{\mathrm{relay}})\in \mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)
+\bigr\}.
+\end{split}
+\end{equation*}
+將 relay beam 從 baseline power 提升至 beam upper bound 所需的額外功率為
+\begin{equation*}
+\begin{split}
+\Delta P_{b_h^{\mathrm{relay}}}^{\max}(t)=
+P_{s_h,b_h^{\mathrm{relay}}}^{\max}-P^{\mathrm{base}}.
+\end{split}
+\end{equation*}
+對於每個 helper relay beam，其 relay demand 定義為
+\begin{equation*}
+D_{b_h^{\mathrm{relay}}}^{\mathrm{relay}}(t)=
+\left|\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)\right|,
+\end{equation*}
+其中 $\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)$ 表示根據 $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$ 得到的 candidate critical users，也就是位於對應 critical closed beam 內，且可被 $b_h^{\mathrm{relay}}$ 覆蓋的 users。
 
-此處 $P_{s}^{\mathrm{relay}}(t)$ 表示衛星 $s$ 在 relay 階段可使用之總功率上限。本文規定，後續所有 relay-related reassociation 均不得重新恢復至原始最大衛星功率 $P_s^{\max}$，而必須在固定的 post-PC power budget 下進行。此設計可確保 relay 機制不會破壞 power control 所建立之 EPFD 合法性基礎。
+若 $P_{s_h}^{\mathrm{pool}}(t)$ 足以支援所有 relay beams 提升至 upper bound，則所有 relay beams 皆可被 boost。若 power pool 不足，本文採用 relay-demand-priority boosting：helper relay beams 依據 $D_{b_h^{\mathrm{relay}}}^{\mathrm{relay}}(t)$ 由大到小排序，relay demand 較高者優先取得額外功率。
 
-在此基礎上，系統首先於 source satellite 上找出所有滿足率低於門檻之 distressed users，並依其 satisfaction 值由低至高排序。此排序方式反映出本文優先處理最受 power control 影響之 users，使服務恢復機制能優先作用於最迫切的對象。
+在分配過程中，若剩餘 power pool 足以使當前 relay beam 提升至 beam upper bound $P_{s_h,b_h^{\mathrm{relay}}}^{\max}$，則將其提升至上限。若剩餘 power pool 不足以完整提升下一個 relay beam，則仍可將剩餘功率分配給該 beam，使其 transmit power 高於 $P^{\mathrm{base}}$。如此可避免剩餘 power pool 被浪費，並提升該 relay beam 的可用 relay capacity。
 
-對於每一位 distressed user $u$，系統會依序檢查 north 與 south helper satellites，判斷其上是否存在可覆蓋該 user 的 beam。若 helper satellite $\hat{s}$ 上存在 beam $\hat{b}$ 使得
-\[
-u\in \mathcal{C}_{\hat{s},\hat{b}}(t),
-\]
-則 $(\hat{s},\hat{b})$ 可視為該 user 的一個 feasible target beam。此時，系統建立一個 source-to-helper one-way relay trial，暫時將 user $u$ 由原 serving beam reassociate 至 $(\hat{s},\hat{b})$。
+因此，所有 helper relay beams 仍可進入後續 BPLR 階段，差別在於各 relay beams 依據最終 transmit power 具有不同的 available relay capacity。
 
-若該 trial 被建立，則受影響 beams 的 user 數會更新為
-\begin{align}
-N_{s^{\star},b_u}'(t) &= N_{s^{\star},b_u}(t)-1,\\
-N_{\hat{s},\hat{b}}'(t) &= N_{\hat{s},\hat{b}}(t)+1,
-\end{align}
-其中 $b_u$ 表示原先服務 distressed user $u$ 的 beam。
+\subsection{Beam-Pair Local Relay}
 
-需注意的是，本文並不對所有可視衛星重新進行全系統更新，而僅對受影響的衛星重新計算 beam user counts 與 beam-level power allocation。這樣的設計一方面更符合局部 reassociation 的物理意義，另一方面也能有效降低演算法計算複雜度。
+完成 relay-beam boosting 後，系統於每一組 closed-beam-to-helper-relay-beam pair 內執行 BPLR。圖~\ref{fig:ch4_Beam-pair_local_relay} 示意 BPLR 流程。對於
+\begin{equation*}
+(b_c^{\mathrm{off}},b_h^{\mathrm{relay}})\in \mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t),
+\end{equation*}
+系統找出原本由 $b_c^{\mathrm{off}}$ 服務，且同時位於 $b_h^{\mathrm{relay}}$ footprint 內的 critical users：
+\begin{equation*}
+\begin{split}
+&\mathcal{U}_{\mathrm{pair}}(b_c^{\mathrm{off}},b_h^{\mathrm{relay}},t)= \\
+&\quad
+\left\{
+u :
+u\in\mathcal{U}_{s^{\mathrm{c}},b_c^{\mathrm{off}}}(t),\;
+u\in\mathcal{F}_{s_h,b_h^{\mathrm{relay}}}(t)
+\right\}.
+\end{split}
+\end{equation*}
+對於 candidate critical user $u$，其由 helper relay beam 服務時的預期 achievable rate 記為
+\begin{equation*}
+R_{u,b_h^{\mathrm{relay}}}(t).
+\end{equation*}
+本文定義 BPLR score 為
+\begin{equation*}
+S_{\mathrm{relay}}(u,t)=R_{u,b_h^{\mathrm{relay}}}(t).
+\end{equation*}
+candidate users 依據 $S_{\mathrm{relay}}(u,t)$ 由大到小排序。排序後，helper relay beam 依據其 final transmit power 計算可用於 critical users 的 remaining relay capacity。此 capacity 已扣除保護原本 helper users 所需的服務資源。
 
-在 beam loads 更新後，系統會對受影響衛星依新的 beam user distribution 重新執行 load-aware power split。對於任一受影響衛星 $\tilde{s}$，其更新後 beam power 可表示為
-\[
-P_{\tilde{s},b}'(t)=
-\frac{N_{\tilde{s},b}'(t)}
-{\sum_{b'\in\mathcal{B}_{\tilde{s}}^{\mathrm{act}\prime}(t)}N_{\tilde{s},b'}'(t)}
-\,P_{\tilde{s}}^{\mathrm{relay}}(t),
-\qquad
-b\in\mathcal{B}_{\tilde{s}}^{\mathrm{act}\prime}(t),
-\]
-其中 $\mathcal{B}_{\tilde{s}}^{\mathrm{act}\prime}(t)$ 為 reassociation 後仍為 active 的 beams 集合。完成 beam power update 後，系統重新計算該 trial 狀態下之 user SINR、instantaneous capacity、actual TDMA rate、satisfaction，以及所有 active beams 對 GS 的 aggregate EPFD。
+接著，系統依序將 remaining relay capacity 分配給 sorted critical users。若剩餘容量足以滿足 user demand $D_u(t)$，則將該 user reassociate 至 helper relay beam，並更新其 satisfaction。若最後剩餘容量不足以完全滿足下一個 user，但仍大於零，則將剩餘容量分配給該 user，使其獲得 partial satisfaction。當 remaining relay capacity 用盡後，該 beam pair 的 relay process 即停止。
 
-因此，本文中的 one-way relay 並非直接接受的 user transfer，而是一種建立在 post-PC 合法功率基礎上的 trial-based reassociation mechanism。其目的在於先評估 source-to-helper offloading 是否能在不違反 EPFD constraint 的前提下，同時改善 distressed user 與整體系統表現。
+所有 relay decisions 仍需滿足 single association constraint。也就是說，被 relay 的 user 會從 critical closed beam reassociate 至 helper relay beam，且同一 time slot 中仍只由一個 beam 服務。
 
-\subsection{Bidirectional Balancing Under Fixed Relay Power Budget}
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{ch4_Beam-pair_local_relay}
+  \caption{Beam-Pair Local Relay (BPLR) 示意。依 $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$ 將 closed beams 上的 candidate critical users reassociate 至對應的 helper relay beams。}
+  \label{fig:ch4_Beam-pair_local_relay}
+\end{figure*}
 
-若 one-way relay 僅改善了單一 distressed user 的服務品質，但未能使全系統 satisfaction objective 提升，則表示 helper satellite 雖成功接手該 user，卻可能因新增負載而使其原有 users 的服務品質下降。此時，若仍直接接受 one-way relay 結果，則容易造成 helper 成為新的服務瓶頸。因此，本文在 one-way relay 失敗時，進一步啟動 bidirectional balancing。
+\subsection{Overall Algorithm}
 
-bidirectional balancing 的核心概念是：當 source satellite 將部分 distressed users 轉交給 helper 後，若 helper 因此負載過高，則允許系統從 helper 原有 users 中挑選一部分，反向 reassociate 回 source satellite。透過這種 forward and reverse reassociation 的組合，系統可在三顆局部相鄰衛星之間進行更細緻的 user redistribution，避免單向 offloading 所造成之負載偏移。
+本文之 online procedure 採用單一 time-slot-based algorithm。在每個 time slot 中，SAPR-R 先執行 SAHR 與 relay-beam boosting，接著根據更新後的 helper relay beam power 執行 BPLR。完整流程如 Algorithm~\ref{alg:ch4_sapr} 所示。
 
-具體而言，在 one-way relay trial 未能被接受時，系統會從 helper 原本服務的 users 中搜尋那些同時也落在 source 某個 beam 覆蓋範圍內的 users。若 helper-side user $v$ 可由 source satellite 上 beam $\bar{b}$ 覆蓋，即
-\[
-v\in \mathcal{C}_{s^{\star},\bar{b}}(t),
-\]
-則系統可進一步建立一個 helper-to-source reverse reassociation trial，將 user $v$ 由 helper 反向轉回 source。
-
-與 one-way relay 相同，每一次 reverse reassociation 都不會重新啟動全系統功率配置，而僅對受影響衛星進行局部更新。具體流程包括：
-\begin{enumerate}
-    \item 更新受影響 beams 的 user counts；
-    \item 在固定的 post-PC satellite power budgets 下重新執行 beam-level load-aware power split；
-    \item 重新計算相關 users 的 SINR、capacity、actual rate、satisfaction 與 aggregate EPFD。
-\end{enumerate}
-
-值得注意的是，bidirectional balancing 並非獨立於 one-way relay 的第二套機制，而是作為 one-way relay 不足時的補償式平衡程序。其目的不是單純降低 helper 負載，而是尋找一個在不破壞 distressed user 改善效果的前提下，能進一步提升全系統 satisfaction objective 的 reassociation 組合。
-
-因此，對於每一個 reverse reassociation trial，系統除檢查其是否提升全系統 objective 與維持 EPFD 合法外，也必須確認其不會抵銷原本 one-way relay 對 distressed user 所帶來的改善。只有在這些條件皆滿足時，該 reverse trial 才具有被保留的價值。
-
-\subsection{Candidate Selection and Acceptance Rule}
-
-在本文方法中，不論是 one-way relay 或 reverse reassociation，任何候選解都不是立即接受，而必須經過完整的 accept/reject evaluation。設當前被處理之 distressed user 為 $u$，系統整體 satisfaction objective 定義為
-\[
-\Phi(t)=\sum_{i\in\mathcal{U}(t)} \mathrm{sat}_i(t).
-\]
-
-則任一 relay candidate 僅在同時滿足下列條件時，才可被接受：
-
-\paragraph{(1) Distressed user improvement}
-被處理之 distressed user 的 satisfaction 必須提升：
-\[
-\mathrm{sat}_u^{\mathrm{trial}}(t)>\mathrm{sat}_u^{\mathrm{base}}(t).
-\]
-
-\paragraph{(2) Global objective improvement}
-全系統 satisfaction objective 必須提升：
-\[
-\Phi^{\mathrm{trial}}(t)>\Phi^{\mathrm{base}}(t).
-\]
-
-\paragraph{(3) EPFD feasibility}
-調整後的 aggregate EPFD 仍須維持合法：
-\[
-\mathrm{EPFD}_{\mathrm{agg}}^{\mathrm{trial}}(t)\le \mathrm{EPFD}_{\mathrm{lim}}.
-\]
-
-因此，one-way relay candidate 的基本接受條件可寫為
-\[
-\Bigl(
-\mathrm{sat}_u^{\mathrm{trial}}(t)>\mathrm{sat}_u^{\mathrm{base}}(t)
-\Bigr)
-\;\land\;
-\Bigl(
-\Phi^{\mathrm{trial}}(t)>\Phi^{\mathrm{base}}(t)
-\Bigr).
-\]
-
-\[
-\land\;
-\Bigl(
-\mathrm{EPFD}_{\mathrm{agg}}^{\mathrm{trial}}(t)\le \mathrm{EPFD}_{\mathrm{lim}}
-\Bigr).
-\]
-
-若某次 one-way relay 雖然使 distressed user 之 satisfaction 提升，但卻因 helper 承擔額外負載而使其他 users 的 satisfaction 下降，導致 $\Phi^{\mathrm{trial}}(t)\le \Phi^{\mathrm{base}}(t)$，則系統不會直接接受該 one-way relay，而是進一步啟動 bidirectional balancing。
-
-對於 bidirectional candidates，除仍須滿足全系統 objective improvement 與 EPFD legality 外，本文另外要求 reverse reassociation 不得破壞 distressed user 的原有改善效果。也就是說，若 reverse trial 造成先前已被改善之 distressed user satisfaction 再次下降，則該 bidirectional candidate 即不予接受。
-
-在完成所有 one-way 與 bidirectional trials 後，系統將從所有可行候選中，選擇滿足條件且使 satisfaction objective 提升最大之候選結果。若沒有任何候選同時滿足上述條件，則系統直接回退至原始 post-PC 狀態，不採用任何 relay 調整。
-
-此種 candidate selection rule 的好處在於，它不會因局部 user 的短期改善而犧牲整體效能，也不會因過度 offloading 而造成 helper side 的新瓶頸。透過目標函數與 EPFD legality 的雙重約束，系統得以在服務品質與法規保護之間取得較佳平衡。
-
-\subsection{Algorithm of the Proposed Relay Framework}
-
-根據前述 one-way relay trial、bidirectional balancing 與 candidate acceptance rule，本文所提方法的完整流程可整理如演算法 1 所示。該演算法以 post-PC system state 為起點，逐一處理 source 衛星上的 distressed users。對每位 user，系統在固定的 post-PC satellite power budget 下，評估可行的 one-way 與 bidirectional reassociation 候選，並僅接受那些能提升全系統 satisfaction objective 且維持 EPFD 合法的候選結果。
-
-\begin{algorithm}[t]
-\caption{Proposed Post-PC One-Way and Bidirectional Relay Procedure}
+\begin{algorithm}[H]
+\caption{SAPR-R Online Operation}
+\label{alg:ch4_sapr}
 \scriptsize
 \begin{algorithmic}[1]
-\Require $P_{s,b}^{\mathrm{pc}}(t)$, user association, $P_s^{\mathrm{relay}}(t)$, source $s^{\star}$, helpers $\{s^N,s^S\}$, $\rho_{\mathrm{dis}}$, $\mathrm{EPFD}_{\mathrm{lim}}$
-\Ensure Final relay association and power allocation
+\Require $\{\mathcal{R}_B(t)\}_{t=1}^{T}$, initial $\mathbf{x}(t)$, $\mathcal{U}(t)$, $D_u(t)$
+\Require $P^{\mathrm{base}}$, $P_{s,b}^{\max}$, $P_s^{\max}$, coverage, capacity/satisfaction model
+\Ensure $\mathbf{x}^{\mathrm{final}}(t)$, $P_{s,b}^{\mathrm{final}}(t)$, $\mathrm{sat}_u^{\mathrm{final}}(t)$
 
-\State Run power control; obtain $P_{s,b}^{\mathrm{pc}}(t)$.
-\State Set $P_s^{\mathrm{relay}}(t)\leftarrow \sum_{b\in\mathcal{B}_s} P_{s,b}^{\mathrm{pc}}(t)$ for each satellite $s$.
-\State Find distressed users $\mathcal{U}_{\mathrm{dis}}(t)$ on $s^{\star}$; sort by ascending satisfaction.
-
-\ForAll{$u\in\mathcal{U}_{\mathrm{dis}}(t)$}
-    \State $\mathcal{C}\leftarrow\emptyset$.
-    \ForAll{$\hat{s}\in\{s^N,s^S\}$}
-        \If{$\exists$ feasible beam on $\hat{s}$ covering $u$}
-            \State One-way trial: $u: s^{\star}\rightarrow \hat{s}$; recompute objective and $\mathrm{EPFD}_{\mathrm{agg}}(t)$.
-            \If{$u$ improves, objective improves, and $\mathrm{EPFD}_{\mathrm{agg}}(t)\le \mathrm{EPFD}_{\mathrm{lim}}$}
-                \State Add to $\mathcal{C}$.
-            \Else
-                \State Bidirectional: find reverse candidates $v$ on $\hat{s}$ coverable by $s^{\star}$.
-                \ForAll{reverse candidate $v$}
-                    \State Reverse trial: $v: \hat{s}\rightarrow s^{\star}$; recompute objective and $\mathrm{EPFD}_{\mathrm{agg}}(t)$.
-                    \If{objective improves and $u$ keeps improvement}
-                        \State Add to $\mathcal{C}$.
-                    \EndIf
-                \EndFor
+\For{$t=1$ \textbf{to} $T$}
+    \State Load $\mathcal{R}_B(t)$; initialize beam powers per record and baseline operation
+    \State \textbf{Stage~1: SAHR and relay-beam boosting}
+    \ForAll{$(b_c^{\mathrm{safe}},b_h^{\mathrm{rel}})\in \mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$}
+        \State Build candidate helper users; compute $\Delta P_v^{\mathrm{rel}}(t)$
+        \State Sort candidates by $\Delta P_v^{\mathrm{rel}}(t)$ descending
+        \ForAll{$v$ in sorted order}
+            \State Trial reassociation $v$: $b_h^{\mathrm{rel}}\to b_c^{\mathrm{safe}}$
+            \If{$v$ not degraded and users on $b_c^{\mathrm{safe}}$ not degraded}
+                \State Accept; update association and $P_{s_h}^{\mathrm{pool}}(t)$
             \EndIf
-        \EndIf
+        \EndFor
     \EndFor
-    \If{$\mathcal{C}\neq \emptyset$}
-        \State Select best feasible candidate in $\mathcal{C}$ (max objective gain).
-    \Else
-        \State Roll back to original post-PC state.
-    \EndIf
+    \ForAll{$s_h\in\{s^{\mathrm{N}}(t),s^{\mathrm{S}}(t)\}$}
+        \State Extract $\mathcal{B}_{s_h}^{\mathrm{relay}}(t)$; compute relay demand; sort by demand
+        \ForAll{$b_h^{\mathrm{relay}}\in \mathcal{B}_{s_h}^{\mathrm{relay}}(t)$ in sorted order}
+            \State Allocate $P_{s_h}^{\mathrm{pool}}(t)$ (full boost, partial boost, or baseline)
+        \EndFor
+        \State Check $\sum_b P_{s,b}(t)\le P_{s_h}^{\max}$
+    \EndFor
+    \State \textbf{Stage~2: Beam-pair local relay}
+    \ForAll{$(b_c^{\mathrm{off}},b_h^{\mathrm{relay}})\in \mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$}
+        \State Build candidate critical users; sort by relay link quality
+        \State Compute remaining relay capacity of $b_h^{\mathrm{relay}}$ (protect helper users)
+        \ForAll{$u$ in sorted order}
+            \If{capacity $\ge D_u(t)$}
+                \State Reassociate $u$ to $b_h^{\mathrm{relay}}$; update $\mathrm{sat}_u(t)$ and capacity
+            \ElsIf{remaining capacity $>0$}
+                \State Partial allocation to $u$; set remaining capacity to $0$; \textbf{break}
+            \Else
+                \State \textbf{break}
+            \EndIf
+        \EndFor
+    \EndFor
+    \State Validate single association, beam power, satellite total power, and EPFD constraints
+    \State Store $\mathbf{x}^{\mathrm{final}}(t)$, $P_{s,b}^{\mathrm{final}}(t)$, $\mathrm{sat}_u^{\mathrm{final}}(t)$
 \EndFor
 \end{algorithmic}
 \end{algorithm}
+
+\subsection{Complexity Discussion}
+
+本文方法避免直接求解 mixed-integer nonlinear optimization problem。由於每個 time slot 的 beam relation record 已預先建立，online procedure 不需重新搜尋 critical satellite、helper satellites 或 beam-pair mappings，而是直接在對應 beam pairs 內執行局部 reassociation 與 relay decision。
+
+令 $K_t^{\mathrm{rel}}$ 表示 time slot $t$ 中 SAHR 階段的 candidate helper users 數量，$K_t^{\mathrm{relay}}$ 表示 BPLR 階段的 candidate critical users 數量。在 Algorithm~\ref{alg:ch4_sapr} 中，candidate 建立與 released power 計算皆與 $K_t^{\mathrm{rel}}$ 呈線性關係，而主要成本來自根據 $\Delta P_v^{\mathrm{rel}}(t)$ 對 candidate helper users 排序。因此，SAHR 的時間複雜度為
+\begin{equation*}
+\mathcal{O}\!\bigl(K_t^{\mathrm{rel}}\log K_t^{\mathrm{rel}}\bigr).
+\end{equation*}
+在 BPLR 階段，candidate critical users 依據 relay link quality 排序，後續 capacity allocation 則為 sequential allocation。因此，BPLR 的時間複雜度為
+\begin{equation*}
+\mathcal{O}\!\bigl(K_t^{\mathrm{relay}}\log K_t^{\mathrm{relay}}\bigr).
+\end{equation*}
+綜合所有 time slots，本文方法的 online complexity 可表示為
+\begin{equation*}
+\mathcal{O}\!\left(
+\sum_{t=1}^{T}
+K_t^{\mathrm{rel}}\log K_t^{\mathrm{rel}}
++
+K_t^{\mathrm{relay}}\log K_t^{\mathrm{relay}}
+\right).
+\end{equation*}
+此結果顯示，本文方法將 online decision 限制於 precomputed beam pairs 內的 local sorting 與 sequential allocation，而非每個 time slot 重新執行 global user association 與 continuous power optimization。
+
+\subsection{Summary}
+
+本章提出 Safe-Beam Assisted Power-Release Relay (SAPR-R) 方法，以處理 critical satellite 接近 protected GS 時 EPFD constraint 與 user satisfaction 之間的 tradeoff。本文先利用 predictable satellite geometry 與 beam footprint overlap 建立 time-slot beam relation record，再於 online 階段執行 SAHR、relay beam boosting 與 BPLR。
+
+透過此分階段設計，本文將原本高度耦合的 user association 與 beam power allocation 問題拆解為可局部處理的 decision steps。critical safe beams 用於釋放 helper satellite power，helper relay beams 則根據 relay demand 取得額外 transmit power，並於 beam pair 內接手 critical closed-beam users。此方法可在滿足 EPFD constraint 的前提下，提高 critical period 中的 total user satisfaction。

@@ -1,0 +1,99 @@
+System Model and Problem Formulation
+3.1 Network Scenario
+本研究考慮一個 OneWeb-like 的 LEO 衛星通訊系統，並聚焦於 NGSO–GSO coexistence 情境下之 downlink interference management 問題。系統中每顆 LEO 衛星配置 個 spot beams [13]，並於每一個 time slot 中服務其覆蓋範圍內的地面 users。
+設 為 time slot 中可見之 LEO 衛星集合， 為衛星 的 beam 集合。本文假設每顆 LEO 衛星皆具有相同數量之 beams，因此有
+每顆衛星之 個 spot beams 採用固定 beam layout，並沿衛星行進方向呈南北排列。對於 satellite 的 beam ，其於 time slot 的地面 footprint 記為
+若 user 位於 內，則表示該 user 可被 satellite 的 beam 覆蓋，並可作為後續 user association 的候選 serving beam。
+此外，系統中設有一個受保護之 GSO ground station，記為 。當某顆 LEO 衛星接近該 GS 正上方，或與 GSO direction 呈現接近 inline 的幾何關係時，其下行傳輸可能對 protected GS 造成較高 aggregate EPFD。為描述此情境，本文將在 time slot 中對 protected GS 造成主要 EPFD 風險的 LEO 衛星定義為 critical satellite，記為
+同時，本文考慮 critical satellite 於同軌道方向上的北側與南側鄰近衛星作為後續服務轉移與 relay 的候選 helper satellites，分別記為
+其中 表示 north helper satellite， 表示 south helper satellite。由於本文考慮之 LEO constellation 具有規律性的 Walker-star orbital structure，critical satellite 與其 north/south helper satellites 之間的相對位置與 beam coverage overlap 具有可預測性。此特性將於後續方法章節中作為 beam-level user reassociation 與 relay 設計之基礎。
+3.2 User Association and Service Model
+設 為 time slot 中位於系統服務範圍內的 user 集合。本文假設每位 user 在同一個 time slot 中最多只能由一顆 LEO 衛星的一個 beam 服務。為描述 user 與 serving beam 之間的關聯，定義 binary association variable 如下：
+其中 、，且 。若 ，表示 user 在 time slot 中由 satellite 的 beam 服務；反之，若 ，則表示該 user 並未由該 satellite-beam pair 服務。
+由 satellite 的 beam 所服務之 user 集合定義為
+因此，beam 上的 served user 數量可表示為
+由於本文假設每位 user 僅能由單一 serving beam 提供服務，因此 user 所獲得的 downlink rate 僅來自其所關聯的 beam，而不會同時由多個 beams 共同提供容量。換言之，不同 beams 的 capacity 不會被同一 user 共同使用；user 的 service quality 完全取決於其 serving beam 的 link condition、beam power、channel assignment，以及該 beam 內同時服務的 user 數量。
+此外，若 user 不位於 beam 的 footprint 內，則該 beam 不會被視為 user 的可行 serving beam。也就是說，本文僅在可覆蓋 user 的 satellite-beam pairs 中進行 association decision。此設定可確保後續 user association、reassociation 與 relay decision 均符合實際 beam coverage 條件。
+3.3 Beam Power Model
+本文考慮一個 baseline-power beam operation model。在一般情境下，亦即 LEO 衛星遠離受保護 GS 且無明顯 EPFD violation 風險時，每顆 satellite 的 active beams 皆配置相同 baseline power。對於 satellite 的 beam ，其 transmit power 表示為
+在 normal operation 下，beam power 設定為
+其中 為一般情境下每個 beam 所配置之 baseline power。此 baseline power 的設計目的，是在不進行 per-time-slot continuous power control 的情況下，提供一個可滿足一般 user demand 的固定功率配置。由於 LEO constellation 中 beams 與 users 數量眾多，若於每個 time slot 重新求解完整 power control problem，將造成較高計算複雜度，且在實際系統中不易即時部署與實現。因此，本文採用 baseline-power operation 作為 normal operation 的初始功率配置，並將後續功率調整集中於 EPFD 風險期間的 beam shutdown 與 helper beam power boosting。
+每個 beam 皆具有其 maximum transmit power，記為
+因此，任意 time slot 中的 beam transmit power 必須滿足
+此外，每顆 satellite 亦具有 total transmit power limit，記為 。因此，satellite 上所有 beams 的總發射功率需滿足
+當 critical satellite 接近 protected GS 並導致 aggregate EPFD violation risk 時，部分 high-risk beams 可能需要被 shutdown。令 表示 critical satellite 上被關閉的 beam 集合，則這些 beams 的 transmit power 設定為
+相對地，critical satellite 上未被關閉的 beams 稱為 safe beams，記為 。這些 safe beams 維持 baseline power：
+其中
+因此，critical satellite 的 beam power 可表示為
+對於 helper satellites，其 beams 在一般情境下同樣使用 baseline power。當 helper satellite 需要接手 critical closed beams 上的 users 時，負責 relay 的 helper beams 可由 baseline power 提升至其 beam-level maximum power：
+然而，helper satellite 上所有 beams 的總功率仍必須滿足 satellite total power limit。因此，即使某些 helper beams 被提升至 beam maximum power，整顆 satellite 的功率配置仍需滿足式 (3.12)。
+在本文後續方法中，critical safe beams 可用於接手部分 helper users，使 helper satellite 釋放功率資源。釋放出的功率可回到 helper satellite 的 available power pool，並用於提升負責 relay 的 helper beams。需要注意的是，雖然 transmit power 可在同一顆 helper satellite 的 beams 間重新分配，每位 user 仍僅能由單一 serving beam 服務，且 user 所獲得的 service rate 僅來自其 serving beam 的 capacity。
+3.4 SINR Model
+在本研究中，user 的接收品質由 serving beam 所提供之 desired signal power、co-channel interference，以及 receiver noise 共同決定。本文採用 OneWeb-like multi-channel frequency assignment，設 為可用 channel 集合，且
+若 satellite 的 beam 使用 channel ，則 user 僅會受到與其 serving beam 使用相同 channel 之 beams 所造成的 co-channel interference。
+假設 user 由 satellite 的 beam 服務，則 user 的接收 SINR 可表示為
+其中 為 desired signal power， 與 分別表示 intra-satellite co-channel interference 與 inter-satellite co-channel interference， 為 receiver noise power。
+3.4.1 Desired Signal Power
+對於由 satellite 的 beam 所服務之 user ，其 desired signal power 可表示為
+其中 為 beam 的 transmit power， 為 beam 朝 user 方向之 transmit antenna gain， 為 user terminal receive antenna gain， 為 satellite 與 user 之間的 total propagation loss。
+本文將 total propagation loss 表示為
+其中 為 free-space path loss， 為 atmospheric gas loss。free-space path loss 可表示為
+其中 為 satellite 與 user 之間的 distance， 為 carrier wavelength。
+3.4.2 Intra-Satellite Interference
+由於同一顆 satellite 上的不同 beams 可能重複使用相同 channel，因此 user 可能受到 serving satellite 上其他 co-channel beams 的干擾。本文將此類干擾定義為 intra-satellite interference。
+若 user 由 satellite 的 beam 服務，則 intra-satellite interference 可表示為
+其中 為 channel indicator function。若 beam 與 serving beam 使用相同 channel，則其值為 1；否則為 0。
+3.4.3 Inter-Satellite Interference
+除同一顆 satellite 上其他 co-channel beams 造成的 interference 外，user 亦可能受到其他可視 LEO satellites 上 co-channel beams 的干擾。本文將此類干擾定義為 inter-satellite interference。
+若 user 由 satellite 的 beam 服務，則 inter-satellite interference 可表示為
+其中 為 interfering beam 朝 user 方向之 transmit antenna gain， 為 satellite 與 user 之間的 total propagation loss。
+3.4.4 SINR Expression
+綜合上述 desired signal、intra-satellite interference、inter-satellite interference 與 receiver noise，user 的接收 SINR 為
+上式顯示，在 OneWeb-like 8-channel 架構下，user 的接收品質不僅取決於 serving beam 的 transmit power、antenna gain 與 path loss，亦會受到使用相同 channel 的 intra-satellite 與 inter-satellite beams 所影響。因此，後續 beam shutdown、user reassociation 與 helper relay decision 皆可能改變 user-side SINR，進而影響 user satisfaction。
+3.5 Capacity and User Satisfaction Model
+在求得 user 的接收 SINR 後，可依 Shannon formula 計算其 instantaneous capacity。令 表示 user 所使用之 effective bandwidth，則 user 在 time slot 的 instantaneous capacity 可表示為
+由於同一 beam 內可能同時服務多位 users，本文以 TDMA model 描述 beam 內資源共享。若 user 由 satellite 的 beam 服務，則該 beam 上的 served user 數量為 。因此，user 的 actual service rate 可表示為
+其中 已於式 (3.7) 定義，表示 satellite 的 beam 於 time slot 中所服務之 user 數量。式 (3.27) 表示同一 beam 內的 users 透過 TDMA 共享該 beam 的 downlink resource。由於本文假設每位 user 僅由單一 beam 服務，因此 user 的 actual service rate 僅由其 serving beam 決定，不會與其他 beams 的 capacity 共同分配。
+令 表示 user 在 time slot 的 demand rate。為評估 user 實際服務品質是否滿足其需求，本文定義 user satisfaction 如下：
+其中，。當 時，表示 user 的 demand 已被完全滿足；當 時，表示 user 僅獲得部分服務；而當 時，表示 user 在該 time slot 中未獲得有效服務。
+此 satisfaction metric 將作為本文 problem formulation 與後續 performance evaluation 的主要指標。本文之目標是在滿足 EPFD regulatory constraint 與功率限制的前提下，盡可能提升系統中所有 users 的 total satisfaction。
+3.6 Beam-Level EPFD Model
+在 NGSO–GSO coexistence 情境下，LEO satellite system 除需維持 user-side link quality 外，亦必須確保其對受保護 GSO ground station 所造成之 aggregate EPFD 不超過 regulatory limit [5], [6]。由於本文考慮之 LEO satellite 配置 個 spot beams，且各 beam 對 protected GS 的 pointing direction、off-axis angle 與 transmit power 皆可能不同，因此本文採用 beam-level EPFD calculation，先計算各 beam 之 EPFD contribution，再於線性域加總。
+考慮 satellite 的 beam ，其對 protected GS 的 EPFD contribution 定義為
+其中 為 beam transmit power， 為 beam 朝 protected GS 方向之 transmit antenna gain， 為 satellite 與 GS 之間的距離， 為 GS antenna 朝 satellite 方向之 receive gain， 為 GS maximum receive gain， 為 GS 至 satellite 方向的 off-axis angle， 為 EPFD evaluation 所採用之 reference bandwidth [7], [8]。
+beam 朝 protected GS 方向之 transmit antenna gain 可表示為 off-axis angle 的函數：
+其中 為 protected GS 相對於 beam boresight 的 off-axis angle。由於同一 satellite 上的 個 beams 具有不同 pointing directions，各 beam 對 GS 的 off-axis angle 亦不同，因此其 EPFD contribution 需分別計算。
+Satellite 對 protected GS 的 total EPFD contribution 為其所有 beams 之 EPFD contribution 於線性域加總：
+在 time slot 中，所有 visible LEO satellites 對 protected GS 所造成之 aggregate EPFD 為
+等價地，可直接表示為
+為確保 NGSO–GSO coexistence 之法規合規性，系統必須滿足
+其中 為對應 reference bandwidth 與受保護 GS 條件下之 EPFD regulatory limit。若某一 time slot 中 ，則表示目前 beam power configuration 對 protected GS 造成過高干擾，後續需透過 beam shutdown 或 user reassociation 等方法使系統重新滿足 EPFD constraint。
+3.7 Problem Formulation
+根據前述系統模型，本文之目標是在滿足 user association、beam power、satellite total power 與 EPFD regulatory constraint 的前提下，最大化系統中所有 users 的 total satisfaction。令
+表示 time slot 中所有 user–beam association variables，並令
+表示所有 beam transmit powers。則本文所考慮之最佳化問題可表示為
+其中，objective function 表示最大化所有 users satisfaction 之總和。由於 已於式 (3.28) 定義，因此該 objective 可反映系統在 time slot 中的整體服務品質。
+第一個限制式為 single association constraint：
+此限制表示每位 user 在同一 time slot 中最多只能由一個 satellite-beam pair 服務。因此，user 所獲得的 service rate 僅來自其 serving beam，而不會同時由多個 beams 提供 capacity。
+第二個限制式為 beam power constraint：
+此限制表示每個 beam 的 transmit power 不得超過其 beam-level maximum power。當 beam 被 shutdown 時，其 transmit power 可為 ；而當 helper beam 參與 relay 時，其 power 可提升，但仍不可超過 。
+第三個限制式為 satellite total power constraint：
+此限制表示每顆 satellite 上所有 beams 的總發射功率不得超過 satellite total power limit。因此，即使部分 helper beams 為了支援 relay 而提升至較高 power，整顆 satellite 的總功率仍需受到 限制。
+第四個限制式為 EPFD constraint：
+此限制確保所有 visible LEO satellites 對 protected GS 所造成之 aggregate EPFD 不超過 regulatory limit，以維持 NGSO–GSO coexistence 之法規合規性。
+由於 user association decision 會影響 beam 內 TDMA sharing、user SINR、actual service rate 與 satisfaction，而 beam power configuration 亦會同時影響 user-side link quality 與 GS-side aggregate EPFD，因此上述問題具有高度耦合性。特別是在 critical satellite 接近 protected GS 時，beam shutdown 雖可降低 EPFD，但也會造成 closed beams 上 users 的 satisfaction degradation。若直接將這些 users reassociate 至 helper satellites，則可能增加 helper beams 的負載並影響其原本 users 的服務品質。
+因此，本文不直接求解上述 mixed-integer non-linear optimization problem 的全域最佳解，而是在下一章提出一套分階段 heuristic framework。該方法在滿足 EPFD constraint 的前提下，透過 safe-beam assisted power release 與 beam-pair local relay，逐步提升 critical period 中的整體 user satisfaction。
+参考文献
+[1] M. Giordani and M. Zorzi, “Non terrestrial networks in the 6g era: Chal lenges and opportunities,” IEEE Net work, vol. 35, no. 2, pp. 244–251, 2021.
+[2] X. Lin, S. Cioni, G. Charbit, R. Chu berre, S. Hellsten, and J.-F. Boutillon, “On the path to 6g: Embracing the next wave of low earth orbit satellite ac cess,” IEEE Communications Magazine, vol. 59, no. 5, pp. 36–42, 2021.
+[3] X. Zhu and C. Jiang, “Integrated satellite-terrestrial networks toward 6g: Architectures, applications, and chal lenges,” IEEE Internet of Things Jour nal, vol. 9, no. 1, pp. 437–461, 2022.
+[4] O. B. Al-Hraishawi, H. Chaaban, S. Kisseleff, E. Lagunas, and S. Chatzinotas, “A survey on non geostationary satellite systems: The communication perspective,” IEEE Communications Surveys & Tutorials, vol. 25, no. 1, pp. 101–132, 2023.
+[5] ITU-R, “Radio regulations,” Inter national Telecommunication Union, Geneva, Switzerland, 2020, see Article 22 for NGSO–GSO interference limits and EPFD framework.
+[6] ——, “Functional description to be used in developing software tools for of determining conformity non-geostationary-satellite orbit f ixed-satellite service systems or net works with limits contained in article 22 of the radio regulations,” Inter national Telecommunication Union Radiocommunication Sector (ITU-R), Geneva, Switzerland, Recommendation S.1503-3, 2018.
+[7] International Telecommunication Union Radiocommunication Sector (ITU-R), “Satellite antenna radiation patterns for non-geostationary orbit satellite antennas operating in the fixed satellite service below 30 ghz,” ITU-R, Geneva, Switzerland, Recommendation S.1528, 2001.
+[8] ITU-R, “Reference fss earth-station ra diation patterns for use in interference assessment involving non-gso satellites in frequency bands between 10.7 ghz and 30 ghz,” ITU-R, Geneva, Switzer land, Recommendation S.1428-1, 2001.
+[9] C. Braun, A. M. Vojcic, L. Simic, and P. Mähönen, “Should we worry about interference in emerging dense ngso satellite constellations?” in Proceedings of the IEEE International Symposium on Dynamic Spectrum Access Networks (DySPAN), 2019, iEEE Xplore docu ment 8935875.
+[10] A. Hills, J. M. Peha, and J. Munk, “Fea sibility of using beam steering to mit igate ku-band leo-to-geo interference,” IEEE Access, vol. 10, pp. 74023–74032, 2022.
+[11] M. Jalali, F. Ortiz, E. Lagunas, S. Kisse leff, L. Emiliani, and S. Chatzinotas, “Joint power and tilt control in satellite constellation for ngso–gso interference mitigation,” IEEE Open Journal of Ve hicular Technology, 2023, early access / accepted version available via IEEE Xplore.
+[12] T. Li, J. Jin, W. Li, Z. Ren, and L. Kuang, “Research on interference avoidance effect of oneweb satellite con stellation’s progressive pitch strategy,” International Journal of Satellite Com munications and Networking, pp. 1–15, 2021.
+[13] WorldVu Satellites Limited, “OneWeb Non-Geostationary Satellite System,” FCC IBFS File No. SAT-LOI-20160428-00041, Technical Attachment, 2016.

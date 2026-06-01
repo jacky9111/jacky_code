@@ -1,9 +1,16 @@
-function [TbeamContributionLog, TbackoffLog, TavgUserSatisfaction] = RunFullPowerAggregateShutdownSweepExcel(root, opts)
+function [TbeamContributionLog, TbackoffLog, TavgUserSatisfaction, TrelayAssignment, TrelayHomeToHelper] = RunFullPowerAggregateShutdownSweepExcel(root, opts)
 % RunFullPowerAggregateShutdownSweepExcel
-% Refill every beam to fixed full power at each time slot, then greedily shut
-% beams off (set power to zero) until aggregate EPFD becomes legal.
-% Optional: record per-slot mean user satisfaction for selected satellites
-% (nearest-subpoint assignment at tStart; shut beams -> satisfaction 0; no relay).
+% Per time slot: (1) reassign users to nearest subpoint + covering beam, (2) EPFD
+% backoff until legal, (3) relay & satisfaction. Relay uses post-backoff beam states.
+% Per slot (when relay on): (a) swap if middle ON beam covers user and sat>=floor,
+% (b) move spare to helper beams that cover distressed users on middle SHUT beams,
+% (c) relay with boosted power. relayPowerShiftMode:
+%     'overlapCapped' — overlap donors only, cap at maxBeamPower_W;
+%     'helperSatPoolUnlimited' — all helper open-beam spare (allocate minus native x1,
+%       excluding sat=1 surplus) pooled to relay beams, no power cap.
+% Excel averages by per-slot home assignment (userSatIdx); relayed users remain
+% in that slot's home satellite cohort.
+% Users may be read from STK facilities or generated in MATLAB (useSimulatedUsers).
 
 if nargin < 2 || isempty(opts)
     opts = struct();
@@ -39,27 +46,67 @@ if opts.verbose
         fprintf('  Power model  : OneWeb EIRP density %.1f dBW/4kHz (BWref %.0f Hz)\n', ...
             double(opts.params.EIRPdens_dBW_per_4kHz), double(opts.params.BWref_Hz));
     else
-        fprintf('  Beam power   : %.3f W\n', double(opts.fullBeamPower_W));
+        fprintf('  Nominal beam : %.3f W (EPFD on-beam)\n', double(opts.fullBeamPower_W));
+        fprintf('  Beam allocate: %.3f W (per open beam for serve/pool)\n', double(opts.beamAllocatePower_W));
+        if isRelayPowerShiftUnlimitedLocal(opts)
+            fprintf('  Relay shift  : helper sat pool -> relay beams (no cap)\n');
+        else
+            fprintf('  Beam budget  : %.3f W (max per beam for serve/shift)\n', double(opts.maxBeamPower_W));
+            fprintf('  Relay shift  : overlap donors, capped\n');
+        end
     end
     fprintf('  EPFD limit   : %.2f dB\n', double(opts.params.EPFD_thr_dB));
     if opts.recordUserSatisfaction
-        fprintf('  User satis.  : %s (assign at tStart, no relay)\n', strjoin(string(opts.satisfactionSatList), ', '));
+        recSats = satisfactionRecordSatListLocal(opts);
+        if opts.reassignUsersEachSlot
+            assignNote = 'reassign users each slot';
+        else
+            assignNote = 'assign users once at tStart';
+        end
+        if opts.enableRelay
+            fprintf('  User satis.  : %s, relay ON, record %d sats, native floor %.2f\n', ...
+                assignNote, numel(recSats), double(opts.relayMinNativeSat));
+        else
+            fprintf('  User satis.  : %s, %s, no relay\n', assignNote, strjoin(recSats, ', '));
+        end
     end
 end
 
-recordSatisfaction = opts.recordUserSatisfaction && ~isempty(opts.satisfactionSatList);
+recordSatisfaction = opts.recordUserSatisfaction;
 userSatIdx = [];
 userBeamIdx = [];
 userCountMat = [];
 P_users_km = [];
+userNames = strings(0, 1);
 if recordSatisfaction
     tAssignStr = datestr(tStart, 'dd mmm yyyy HH:MM:SS');
-    [~, P_users_km] = userFacilitiesXYZLocal(sc, string(opts.userPrefix));
-    satGeomAssign = buildSatelliteBeamGeometryLocal(root, satList, tAssignStr, opts.beamHalfNS_deg);
-    [userCountMat, userSatIdx, userBeamIdx] = assignUsersToNearestBeamCenterLocal( ...
-        satGeomAssign, P_users_km, opts.beamHalfEW_deg, opts.beamHalfNS_deg);
+    if opts.useSimulatedUsers
+        placementSats = string(opts.userPlacementSatList(:));
+        [userNames, P_users_km, ~, ~, ~] = GenerateSimulatedUsersAroundSatellites( ...
+            root, placementSats, opts.userAreaSide_km, opts.numUsersPerSatellite, tAssignStr, opts.userPrefix);
+    else
+        [userNames, P_users_km] = userFacilitiesXYZLocal(sc, string(opts.userPrefix));
+    end
+    if ~opts.reassignUsersEachSlot
+        satGeomAssign = buildSatelliteBeamGeometryLocal(root, satList, tAssignStr, opts.beamHalfNS_deg);
+        [userCountMat, userSatIdx, userBeamIdx] = assignUsersToNearestBeamCenterLocal( ...
+            satGeomAssign, P_users_km, opts.beamHalfEW_deg, opts.beamHalfNS_deg);
+    end
     if opts.verbose
-        fprintf('  Users loaded : %d (assigned at %s)\n', size(P_users_km, 2), tAssignStr);
+        if opts.useSimulatedUsers
+            if opts.reassignUsersEachSlot
+                assignNote = 'nearest subpoint reassigned every slot';
+            else
+                assignNote = sprintf('assigned at %s', tAssignStr);
+            end
+            fprintf(['  Users simulated: %d (%d/sat x %d sats, %.0f km field, ' ...
+                'fixed positions, %s)\n'], ...
+                size(P_users_km, 2), opts.numUsersPerSatellite, numel(placementSats), ...
+                opts.userAreaSide_km, assignNote);
+        else
+            fprintf('  Users loaded : %d from STK prefix "%s"\n', ...
+                size(P_users_km, 2), char(string(opts.userPrefix)));
+        end
     end
 end
 
@@ -67,7 +114,17 @@ backoffRows = struct('time', {}, 'geo', {}, 'shutdown_rank', {}, 'sat', {}, 'bea
     'beam_pfd_contribution_dB', {}, 'gs_epfd_before_dB', {}, 'gs_epfd_after_dB', {}, 'epfd_drop_dB', {});
 beamRows = struct('time', {}, 'geo', {}, 'sat', {}, 'beam', {}, 'beam_pfd_contribution_dB', {}, ...
     'gs_current_epfd_dB', {}, 'initial_power_W', {}, 'final_power_W', {}, 'shut_off', {}, 'shutdown_rank', {});
-satisfactionRows = struct('time', {}, 'geo', {}, 'sat', {}, 'avg_user_satisfaction', {}, 'assigned_user_count', {});
+satisfactionRows = struct('time', {}, 'geo', {}, 'sat', {}, 'sat_subpoint_lat_deg', {}, ...
+    'avg_user_satisfaction', {}, 'avg_user_satisfaction_no_relay', {}, 'assigned_user_count', {}, ...
+    'relay_served_count', {}, 'unserved_distressed_count', {}, 'gs_epfd_after_dB', {}, ...
+    'epfd_legal_before_relay', {});
+relayAssignmentRows = struct('time', {}, 'geo', {}, 'user_id', {}, 'home_sat', {}, 'home_beam', {}, ...
+    'relay_sat', {}, 'relay_beam', {}, 'user_satisfaction', {});
+relayHomeToHelperRows = struct('time', {}, 'geo', {}, 'home_sat', {}, 'relay_sat', {}, 'relay_user_count', {});
+swapServiceRows = struct('time', {}, 'geo', {}, 'user_id', {}, 'home_sat', {}, 'home_beam', {}, ...
+    'service_sat', {}, 'service_beam', {}, 'user_satisfaction', {});
+intraSatPowerShiftRows = struct('time', {}, 'geo', {}, 'helper_sat', {}, 'donor_beam', {}, ...
+    'spare_W', {}, 'recipient_beam', {}, 'allocated_W', {}, 'recipient_final_power_W', {});
 
 for iSlot = 1:numSlots
     t = timeGrid(iSlot);
@@ -83,10 +140,18 @@ for iSlot = 1:numSlots
         end
     end
     if opts.verbose && (mod(iSlot-1, opts.logEveryNSlots) == 0 || iSlot == 1 || iSlot == numSlots)
-        fprintf('[%d/%d] %s : reading STK and computing backoff...\n', iSlot, numSlots, tStr);
+        if recordSatisfaction && opts.reassignUsersEachSlot
+            fprintf('[%d/%d] %s : reassign -> EPFD backoff -> relay/satisfaction...\n', iSlot, numSlots, tStr);
+        else
+            fprintf('[%d/%d] %s : EPFD backoff -> relay/satisfaction...\n', iSlot, numSlots, tStr);
+        end
         drawnow;
     end
     satGeom = buildSatelliteBeamGeometryLocal(root, satList, tStr, opts.beamHalfNS_deg);
+    if recordSatisfaction && opts.reassignUsersEachSlot
+        [userCountMat, userSatIdx, userBeamIdx] = assignUsersToNearestBeamCenterLocal( ...
+            satGeom, P_users_km, opts.beamHalfEW_deg, opts.beamHalfNS_deg);
+    end
     [P_geo_all, geoNames] = buildGeoReferencePointsLocal(root, geoList, gsLon_deg, opts.useIdealGsoAtGs, tStr);
     [beamTable, threshold_lin] = buildFullPowerBeamTable(tStr, gsName, satList, satGeom, P_gs_km, P_geo_all, geoNames, opts);
 
@@ -132,6 +197,7 @@ for iSlot = 1:numSlots
 
         slotAggAfter_dB = 10*log10(max(aggAfter_lin, 1e-300));
         slotShutCount = max(slotShutCount, shutCount);
+        epfdLegalBeforeRelay = aggAfter_lin <= threshold_lin + linTol;
 
         if slotViolated && any(Tgeo.shut_off > 0)
             involvedSats = unique(string(Tgeo.sat(Tgeo.shut_off > 0)), 'stable');
@@ -153,28 +219,112 @@ for iSlot = 1:numSlots
             end
         end
 
+        % Phase 3: middle swap -> pre-shift power on helper (overlap spare -> shut-region beams) -> relay -> satisfaction.
         if recordSatisfaction
             userDemand_bps = double(opts.userDemand_Mbps) * 1e6;
-            satisfaction = computeUserSatisfactionNoRelayLocal( ...
+            NuserSlot = numel(userSatIdx);
+            NsatSlot = numel(satList);
+            NbeamSlot = size(satGeom(1).b_all, 2);
+            PbeamBase_W = beamPowerMatrixFromTgeoLocal(Tgeo, satList, NbeamSlot);
+            shutOffMat = shutOffMatrixFromTgeoLocal(Tgeo, satList, NbeamSlot);
+            swapServiceMask = false(NuserSlot, 1);
+            swapMiddleSatIdx = zeros(NuserSlot, 1);
+            swapMiddleBeamIdx = zeros(NuserSlot, 1);
+            middleServeCount = zeros(NsatSlot, NbeamSlot);
+
+            if opts.enableRelay && opts.enableMiddleHelperSwap && epfdLegalBeforeRelay
+                [swapServiceMask, swapMiddleSatIdx, swapMiddleBeamIdx, middleServeCount, swapRowsSlot] = ...
+                    applyMiddleHelperSwapLocal(string(tStr), geoNames(ig), satGeom, satList, shutOffMat, ...
+                    userSatIdx, userBeamIdx, P_users_km, userNames, PbeamBase_W, beamPowerBudgetForSwapLocal(opts), ...
+                    opts.beamHalfEW_deg, opts.beamHalfNS_deg, opts.params, userDemand_bps, opts.relayMinNativeSat);
+                swapServiceRows = [swapServiceRows, swapRowsSlot]; %#ok<AGROW>
+            end
+
+            satisfactionNoRelay = computeUserSatisfactionNoRelayLocal( ...
                 satGeom, satList, userSatIdx, userBeamIdx, userCountMat, P_users_km, Tgeo, opts.params, userDemand_bps);
-            for iSatRec = 1:numel(opts.satisfactionSatList)
-                satName = string(opts.satisfactionSatList(iSatRec));
+            relaySatIdx = zeros(NuserSlot, 1);
+            relayBeamIdx = zeros(NuserSlot, 1);
+            relayAssignedMask = false(NuserSlot, 1);
+            satisfactionRelay = satisfactionNoRelay;
+            PbeamEffective_W = PbeamBase_W;
+
+            if opts.enableRelay && epfdLegalBeforeRelay
+                if isRelayPowerShiftUnlimitedLocal(opts)
+                    PbeamEffective_W = beamPowerServeMatrixLocal(shutOffMat, PbeamBase_W, opts.beamAllocatePower_W);
+                    [PbeamEffective_W, shiftRowsSlot] = poolHelperSpareToRelayBeamsUnlimitedLocal( ...
+                        string(tStr), geoNames(ig), satGeom, satList, userSatIdx, userBeamIdx, shutOffMat, ...
+                        swapServiceMask, PbeamEffective_W, P_users_km, opts.params, userDemand_bps, ...
+                        opts.beamAllocatePower_W, opts.beamHalfEW_deg, opts.beamHalfNS_deg);
+                    intraSatPowerShiftRows = [intraSatPowerShiftRows, shiftRowsSlot]; %#ok<AGROW>
+                else
+                    PbeamEffective_W = PbeamBase_W;
+                    if opts.enableMiddleHelperSwap
+                        [PbeamEffective_W, shiftRowsSlot] = boostHelperBeamsBeforeRelayLocal( ...
+                            string(tStr), geoNames(ig), satGeom, satList, userSatIdx, userBeamIdx, shutOffMat, ...
+                            swapServiceMask, PbeamBase_W, P_users_km, opts.params, userDemand_bps, ...
+                            opts.fullBeamPower_W, opts.maxBeamPower_W, opts.beamHalfEW_deg, opts.beamHalfNS_deg);
+                        intraSatPowerShiftRows = [intraSatPowerShiftRows, shiftRowsSlot]; %#ok<AGROW>
+                    end
+                end
+                [relayAssignedMask, relaySatIdx, relayBeamIdx] = assignRelayUsersLocal( ...
+                    satGeom, satList, userSatIdx, userBeamIdx, shutOffMat, swapServiceMask, P_users_km, ...
+                    PbeamEffective_W, opts.beamHalfEW_deg, opts.beamHalfNS_deg, opts.params, userDemand_bps, ...
+                    opts.relayMinNativeSat, opts.relayMinRelayAvgSat);
+                satisfactionRelay = evaluateUserSatisfactionWithSwapRelayLocal( ...
+                    satGeom, satList, userSatIdx, userBeamIdx, userCountMat, P_users_km, PbeamEffective_W, ...
+                    swapServiceMask, swapMiddleSatIdx, swapMiddleBeamIdx, middleServeCount, ...
+                    relayAssignedMask, relaySatIdx, relayBeamIdx, opts.params, userDemand_bps, ...
+                    opts.relayMinNativeSat, opts.relayMinRelayAvgSat);
+            else
+                if opts.enableRelay && ~epfdLegalBeforeRelay
+                    warning('RunFullPowerAggregateShutdownSweepExcel:EpfdNotLegal', ...
+                        '%s geo %s: EPFD still illegal after backoff (%.2f dB); relay skipped.', ...
+                        tStr, geoNames(ig), slotAggAfter_dB);
+                end
+            end
+            [relayAssignmentRows, relayHomeToHelperRows] = appendRelayExcelRowsLocal( ...
+                relayAssignmentRows, relayHomeToHelperRows, string(tStr), geoNames(ig), ...
+                userNames, satList, userSatIdx, userBeamIdx, relayAssignedMask, relaySatIdx, relayBeamIdx, ...
+                satisfactionRelay, satisfactionRecordSatListLocal(opts));
+            recordSats = satisfactionRecordSatListLocal(opts);
+            for iSatRec = 1:numel(recordSats)
+                satName = string(recordSats(iSatRec));
                 iSat = find(satList == satName, 1);
                 if isempty(iSat)
                     continue;
                 end
+                % Home cohort: this slot's assignment (userSatIdx). Relayed users stay in
+                % this home group; satisfaction uses helper beam when relay applies.
                 userMask = userSatIdx == iSat;
                 nAssigned = sum(userMask);
                 if nAssigned > 0
-                    avgSat = mean(satisfaction(userMask), 'omitnan');
+                    avgRelay = mean(satisfactionRelay(userMask), 'omitnan');
+                    avgNoRelay = mean(satisfactionNoRelay(userMask), 'omitnan');
                 else
-                    avgSat = NaN;
+                    avgRelay = NaN;
+                    avgNoRelay = NaN;
                 end
+                homeDistressed = userMask & ~relayAssignedMask & (satisfactionNoRelay < 1e-12);
+                relayServed = userMask & relayAssignedMask;
                 satisfactionRows(end+1).time = string(tStr); %#ok<AGROW>
                 satisfactionRows(end).geo = geoNames(ig);
                 satisfactionRows(end).sat = satName;
-                satisfactionRows(end).avg_user_satisfaction = avgSat;
+                satisfactionRows(end).sat_subpoint_lat_deg = satGeom(iSat).subLat;
+                satisfactionRows(end).avg_user_satisfaction = avgRelay;
+                satisfactionRows(end).avg_user_satisfaction_no_relay = avgNoRelay;
                 satisfactionRows(end).assigned_user_count = nAssigned;
+                satisfactionRows(end).relay_served_count = sum(relayServed);
+                satisfactionRows(end).unserved_distressed_count = sum(homeDistressed);
+                satisfactionRows(end).gs_epfd_after_dB = slotAggAfter_dB;
+                satisfactionRows(end).epfd_legal_before_relay = double(epfdLegalBeforeRelay);
+                nUnserved = sum(homeDistressed);
+                if nUnserved > 0
+                    relayHomeToHelperRows(end+1).time = string(tStr); %#ok<AGROW>
+                    relayHomeToHelperRows(end).geo = geoNames(ig);
+                    relayHomeToHelperRows(end).home_sat = satName;
+                    relayHomeToHelperRows(end).relay_sat = "UNSERVED";
+                    relayHomeToHelperRows(end).relay_user_count = nUnserved;
+                end
             end
         end
     end
@@ -183,14 +333,21 @@ for iSlot = 1:numSlots
         fprintf('  done in %.2f s | GS EPFD %.2f -> %.2f dB | shut %d beams\n', ...
             toc(slotTic), slotAggBefore_dB, slotAggAfter_dB, slotShutCount);
         if recordSatisfaction
-            for iSatRec = 1:numel(opts.satisfactionSatList)
-                satName = string(opts.satisfactionSatList(iSatRec));
+            recordSats = satisfactionRecordSatListLocal(opts);
+            for iSatRec = 1:numel(recordSats)
+                satName = string(recordSats(iSatRec));
                 rowMask = string({satisfactionRows.time})' == string(tStr) & ...
                     string({satisfactionRows.sat})' == satName;
                 if any(rowMask)
-                    fprintf('    %s avg user sat = %.4f (%d users)\n', satName, ...
-                        satisfactionRows(find(rowMask,1)).avg_user_satisfaction, ...
-                        satisfactionRows(find(rowMask,1)).assigned_user_count);
+                    r = satisfactionRows(find(rowMask, 1));
+                    if opts.enableRelay
+                        fprintf('    %s avg sat %.4f (no relay %.4f) | relay %d unserved %d\n', ...
+                            satName, r.avg_user_satisfaction, r.avg_user_satisfaction_no_relay, ...
+                            r.relay_served_count, r.unserved_distressed_count);
+                    else
+                        fprintf('    %s avg user sat = %.4f (%d users)\n', satName, ...
+                            r.avg_user_satisfaction, r.assigned_user_count);
+                    end
                 end
             end
         end
@@ -201,6 +358,8 @@ end
 TbeamContributionLog = struct2table(beamRows);
 TbackoffLog = struct2table(backoffRows);
 TavgUserSatisfaction = struct2table(satisfactionRows);
+TrelayAssignment = struct2table(relayAssignmentRows);
+TrelayHomeToHelper = struct2table(relayHomeToHelperRows);
 
 if ~isempty(TbeamContributionLog)
     TbeamContributionLog = sortrows(TbeamContributionLog, {'time','geo','sat','beam'}, {'ascend','ascend','ascend','ascend'});
@@ -210,6 +369,14 @@ if ~isempty(TbackoffLog)
 end
 if ~isempty(TavgUserSatisfaction)
     TavgUserSatisfaction = sortrows(TavgUserSatisfaction, {'time','geo','sat'}, {'ascend','ascend','ascend'});
+end
+if ~isempty(TrelayAssignment)
+    TrelayAssignment = sortrows(TrelayAssignment, {'time','geo','home_sat','relay_sat','user_id'}, ...
+        {'ascend','ascend','ascend','ascend','ascend'});
+end
+if ~isempty(TrelayHomeToHelper)
+    TrelayHomeToHelper = sortrows(TrelayHomeToHelper, {'time','geo','home_sat','relay_sat'}, ...
+        {'ascend','ascend','ascend','ascend'});
 end
 
 excelPath = char(string(opts.excelPath));
@@ -224,6 +391,24 @@ writetable(TbeamContributionLog, excelPath, 'Sheet', 'ViolatingSat_16BeamState')
 writetable(TbackoffLog, excelPath, 'Sheet', 'Backoff_Log');
 if recordSatisfaction && ~isempty(TavgUserSatisfaction)
     writetable(TavgUserSatisfaction, excelPath, 'Sheet', 'AvgUserSatisfaction');
+end
+if recordSatisfaction && ~isempty(TrelayAssignment)
+    writetable(TrelayAssignment, excelPath, 'Sheet', 'Relay_Assignment');
+end
+if recordSatisfaction && ~isempty(TrelayHomeToHelper)
+    writetable(TrelayHomeToHelper, excelPath, 'Sheet', 'Relay_HomeToHelper');
+end
+TswapService = struct2table(swapServiceRows);
+TintraSatPowerShift = struct2table(intraSatPowerShiftRows);
+if recordSatisfaction && ~isempty(TswapService)
+    TswapService = sortrows(TswapService, {'time','geo','home_sat','service_sat','user_id'}, ...
+        {'ascend','ascend','ascend','ascend','ascend'});
+    writetable(TswapService, excelPath, 'Sheet', 'Swap_Service');
+end
+if recordSatisfaction && ~isempty(TintraSatPowerShift)
+    TintraSatPowerShift = sortrows(TintraSatPowerShift, {'time','geo','helper_sat','donor_beam','recipient_beam'}, ...
+        {'ascend','ascend','ascend','ascend','ascend'});
+    writetable(TintraSatPowerShift, excelPath, 'Sheet', 'IntraSat_PowerShift');
 end
 fprintf('Saved full-power shutdown Excel: %s\n', excelPath);
 end
@@ -263,6 +448,26 @@ opts.params = ensureParamDefaults(opts.params);
 if ~isfield(opts, 'userPrefix') || strlength(string(opts.userPrefix)) == 0
     opts.userPrefix = "User_";
 end
+if ~isfield(opts, 'useSimulatedUsers') || isempty(opts.useSimulatedUsers)
+    opts.useSimulatedUsers = false;
+end
+if ~isfield(opts, 'reassignUsersEachSlot') || isempty(opts.reassignUsersEachSlot)
+    opts.reassignUsersEachSlot = true;
+end
+if ~isfield(opts, 'userPlacementSatList')
+    opts.userPlacementSatList = string.empty(0, 1);
+end
+if isempty(opts.userPlacementSatList)
+    opts.userPlacementSatList = string(opts.satList(:));
+end
+opts.userPlacementSatList = string(opts.userPlacementSatList(:));
+if ~isfield(opts, 'numUsersPerSatellite') || ~isfinite(opts.numUsersPerSatellite)
+    opts.numUsersPerSatellite = 30;
+end
+opts.numUsersPerSatellite = max(1, round(double(opts.numUsersPerSatellite)));
+if ~isfield(opts, 'userAreaSide_km') || ~isfinite(opts.userAreaSide_km)
+    opts.userAreaSide_km = 1888;
+end
 if ~isfield(opts, 'userDemand_Mbps') || ~isfinite(opts.userDemand_Mbps)
     opts.userDemand_Mbps = 25;
 end
@@ -273,6 +478,54 @@ opts.satisfactionSatList = string(opts.satisfactionSatList(:));
 if ~isfield(opts, 'recordUserSatisfaction') || isempty(opts.recordUserSatisfaction)
     opts.recordUserSatisfaction = true;
 end
+if ~isfield(opts, 'enableRelay') || isempty(opts.enableRelay)
+    opts.enableRelay = true;
+end
+if ~isfield(opts, 'relayMinNativeSat') || ~isfinite(opts.relayMinNativeSat)
+    opts.relayMinNativeSat = 0.9;
+end
+opts.relayMinNativeSat = max(0, min(1, double(opts.relayMinNativeSat)));
+if ~isfield(opts, 'relayMinRelayAvgSat') || ~isfinite(opts.relayMinRelayAvgSat)
+    opts.relayMinRelayAvgSat = opts.relayMinNativeSat;
+end
+opts.relayMinRelayAvgSat = max(0, min(1, double(opts.relayMinRelayAvgSat)));
+if ~isfield(opts, 'enableMiddleHelperSwap') || isempty(opts.enableMiddleHelperSwap)
+    opts.enableMiddleHelperSwap = opts.enableRelay;
+end
+if ~isfield(opts, 'beamAllocatePower_W') || ~isfinite(opts.beamAllocatePower_W)
+    opts.beamAllocatePower_W = 1.05;
+end
+if ~isfield(opts, 'relayPowerShiftMode') || strlength(string(opts.relayPowerShiftMode)) == 0
+    opts.relayPowerShiftMode = "overlapCapped";
+end
+opts.relayPowerShiftMode = string(opts.relayPowerShiftMode);
+if ~isfield(opts, 'enforceMaxBeamPowerCap') || isempty(opts.enforceMaxBeamPowerCap)
+    opts.enforceMaxBeamPowerCap = ~isRelayPowerShiftUnlimitedLocal(opts);
+end
+if ~isfield(opts, 'maxBeamPower_W') || ~isfinite(opts.maxBeamPower_W)
+    opts.maxBeamPower_W = opts.beamAllocatePower_W;
+end
+if opts.enforceMaxBeamPowerCap
+    opts.maxBeamPower_W = max(double(opts.beamAllocatePower_W), double(opts.maxBeamPower_W));
+else
+    opts.maxBeamPower_W = inf;
+end
+if ~isfield(opts, 'satisfactionRecordSatList')
+    opts.satisfactionRecordSatList = string.empty(0, 1);
+end
+if isempty(opts.satisfactionRecordSatList)
+    if opts.enableRelay
+        opts.satisfactionRecordSatList = string(opts.satList(:));
+    else
+        opts.satisfactionRecordSatList = string(opts.satisfactionSatList(:));
+    end
+else
+    opts.satisfactionRecordSatList = string(opts.satisfactionRecordSatList(:));
+end
+end
+
+function satListOut = satisfactionRecordSatListLocal(opts)
+satListOut = string(opts.satisfactionRecordSatList(:));
 end
 
 function P = ensureParamDefaults(P)
@@ -547,10 +800,8 @@ for iu = 1:Nuser
 end
 end
 
-function satisfaction = computeUserSatisfactionNoRelayLocal( ...
-    satGeom, satList, userSatIdx, userBeamIdx, userCountMat, P_users_km, Tgeo, P, userDemand_bps)
+function PbeamActualMat_W = beamPowerMatrixFromTgeoLocal(Tgeo, satList, Nbeam)
 Nsat = numel(satList);
-Nbeam = size(satGeom(1).b_all, 2);
 PbeamActualMat_W = zeros(Nsat, Nbeam);
 for r = 1:height(Tgeo)
     iSat = find(satList == string(Tgeo.sat(r)), 1);
@@ -560,13 +811,26 @@ for r = 1:height(Tgeo)
     b = Tgeo.beam(r);
     PbeamActualMat_W(iSat, b) = Tgeo.final_power_W(r);
 end
+end
 
+function shutOffMat = shutOffMatrixFromTgeoLocal(Tgeo, satList, Nbeam)
+Nsat = numel(satList);
+shutOffMat = zeros(Nsat, Nbeam);
+for r = 1:height(Tgeo)
+    iSat = find(satList == string(Tgeo.sat(r)), 1);
+    if isempty(iSat)
+        continue;
+    end
+    shutOffMat(iSat, Tgeo.beam(r)) = double(Tgeo.shut_off(r) > 0);
+end
+end
+
+function satisfaction = computeUserSatisfactionNoRelayLocal( ...
+    satGeom, satList, userSatIdx, userBeamIdx, userCountMat, P_users_km, Tgeo, P, userDemand_bps)
+Nbeam = size(satGeom(1).b_all, 2);
+PbeamActualMat_W = beamPowerMatrixFromTgeoLocal(Tgeo, satList, Nbeam);
 Nuser = numel(userSatIdx);
 satisfaction = zeros(Nuser, 1);
-Buser = P.B_Hz;
-noisePower_W = P.kB * P.user_noise_temp_K * Buser;
-Gur_lin = 10^(P.GS_LEO_Gmax_dBi/10);
-demandMbps = userDemand_bps / 1e6;
 
 for iu = 1:Nuser
     iSat = userSatIdx(iu);
@@ -575,17 +839,753 @@ for iu = 1:Nuser
         continue;
     end
     Pbeam = PbeamActualMat_W(iSat, b);
-    if ~isfinite(Pbeam) || Pbeam <= 0
-        satisfaction(iu) = 0;
+    usersInBeam = max(double(userCountMat(iSat, b)), 1);
+    satisfaction(iu) = userSatisfactionAtBeamLocal( ...
+        iu, iSat, b, Pbeam, usersInBeam, satGeom, P_users_km, P, userDemand_bps);
+end
+end
+
+function [relayAssignmentRows, relayHomeToHelperRows] = appendRelayExcelRowsLocal( ...
+    relayAssignmentRows, relayHomeToHelperRows, tStr, geoName, userNames, satList, ...
+    userSatIdx, userBeamIdx, relayAssignedMask, relaySatIdx, relayBeamIdx, satisfactionRelay, ...
+    homeSatFilterList)
+if nargin < 14 || isempty(homeSatFilterList)
+    homeSatFilterList = satList;
+end
+homeSatFilterList = string(homeSatFilterList(:));
+relayUsers = find(relayAssignedMask);
+if isempty(relayUsers)
+    return;
+end
+
+pairCount = containers.Map('KeyType', 'char', 'ValueType', 'double');
+for k = 1:numel(relayUsers)
+    iu = relayUsers(k);
+    homeSat = satList(userSatIdx(iu));
+    if ~any(homeSatFilterList == homeSat)
         continue;
     end
-    channelGain = userLinkChannelGainPerWLocal(satGeom(iSat), b, P_users_km(:,iu), P, Gur_lin);
-    sig = Pbeam * channelGain;
-    sinr = sig / max(noisePower_W, eps);
-    cinst_bps = Buser * log2(1 + sinr);
-    usersInBeam = max(double(userCountMat(iSat, b)), 1);
-    rate_Mbps = cinst_bps / usersInBeam / 1e6;
-    satisfaction(iu) = min(rate_Mbps / max(demandMbps, eps), 1);
+    relaySat = satList(relaySatIdx(iu));
+    relayBeam = relayBeamIdx(iu);
+    homeBeam = userBeamIdx(iu);
+    uid = userNames(iu);
+    if iu > numel(userNames)
+        uid = sprintf('User_%d', iu);
+    end
+
+    relayAssignmentRows(end+1).time = tStr; %#ok<AGROW>
+    relayAssignmentRows(end).geo = geoName;
+    relayAssignmentRows(end).user_id = string(uid);
+    relayAssignmentRows(end).home_sat = homeSat;
+    relayAssignmentRows(end).home_beam = homeBeam;
+    relayAssignmentRows(end).relay_sat = relaySat;
+    relayAssignmentRows(end).relay_beam = relayBeam;
+    relayAssignmentRows(end).user_satisfaction = satisfactionRelay(iu);
+
+    pairKey = sprintf('%s|%s', char(homeSat), char(relaySat));
+    if isKey(pairCount, pairKey)
+        pairCount(pairKey) = pairCount(pairKey) + 1;
+    else
+        pairCount(pairKey) = 1;
+    end
+end
+
+pairKeys = keys(pairCount);
+for p = 1:numel(pairKeys)
+    parts = strsplit(char(pairKeys{p}), '|');
+    relayHomeToHelperRows(end+1).time = tStr; %#ok<AGROW>
+    relayHomeToHelperRows(end).geo = geoName;
+    relayHomeToHelperRows(end).home_sat = string(parts{1});
+    relayHomeToHelperRows(end).relay_sat = string(parts{2});
+    relayHomeToHelperRows(end).relay_user_count = pairCount(pairKeys{p});
+end
+end
+
+function [swapServiceMask, swapMiddleSatIdx, swapMiddleBeamIdx, middleServeCount, swapRows] = ...
+    applyMiddleHelperSwapLocal(tStr, geoName, satGeom, satList, shutOffMat, userSatIdx, userBeamIdx, ...
+    P_users_km, userNames, PbeamBase_W, beamPowerBudget_W, beamHalfEW_deg, beamHalfNS_deg, P, ...
+    userDemand_bps, minSwapSat)
+Nsat = numel(satList);
+Nbeam = size(satGeom(1).b_all, 2);
+Nuser = numel(userSatIdx);
+swapServiceMask = false(Nuser, 1);
+swapMiddleSatIdx = zeros(Nuser, 1);
+swapMiddleBeamIdx = zeros(Nuser, 1);
+middleServeCount = zeros(Nsat, Nbeam);
+swapRows = struct('time', {}, 'geo', {}, 'user_id', {}, 'home_sat', {}, 'home_beam', {}, ...
+    'service_sat', {}, 'service_beam', {}, 'user_satisfaction', {});
+
+for iu = 1:Nuser
+    iHome = userSatIdx(iu);
+    bHome = userBeamIdx(iu);
+    if iHome < 1 || bHome < 1 || shutOffMat(iHome, bHome) > 0
+        continue;
+    end
+    middleServeCount(iHome, bHome) = middleServeCount(iHome, bHome) + 1;
+end
+
+distressedIdx = find(any(shutOffMat > 0, 2));
+if isempty(distressedIdx)
+    return;
+end
+
+middleOpenBeamsBySat = cell(Nsat, 1);
+for iMid = distressedIdx(:).'
+    middleOpenBeamsBySat{iMid} = find(shutOffMat(iMid, :) == 0 & PbeamBase_W(iMid, :) > 0);
+end
+
+for iMid = distressedIdx(:).'
+    middleOpenBeams = middleOpenBeamsBySat{iMid};
+    if isempty(middleOpenBeams)
+        continue;
+    end
+    for iHelp = 1:Nsat
+        if iHelp == iMid
+            continue;
+        end
+        candUsers = find(userSatIdx == iHelp & ~swapServiceMask);
+        for k = 1:numel(candUsers)
+            iu = candUsers(k);
+            bH = userBeamIdx(iu);
+            if bH < 1 || shutOffMat(iHelp, bH) > 0 || PbeamBase_W(iHelp, bH) <= 0
+                continue;
+            end
+            bestSat = -1;
+            bestBM = 0;
+            for bM = middleOpenBeams
+                if ~userCoveredByBeamLocal(satGeom(iMid), bM, P_users_km(:, iu), beamHalfEW_deg, beamHalfNS_deg)
+                    continue;
+                end
+                nMid = middleServeCount(iMid, bM) + 1;
+                Pserve_W = beamPowerBudget_W;
+                sTry = userSatisfactionAtBeamLocal(iu, iMid, bM, Pserve_W, nMid, ...
+                    satGeom, P_users_km, P, userDemand_bps);
+                if sTry + 1e-9 >= minSwapSat && sTry > bestSat
+                    bestSat = sTry;
+                    bestBM = bM;
+                end
+            end
+            if bestBM < 1
+                continue;
+            end
+            swapServiceMask(iu) = true;
+            swapMiddleSatIdx(iu) = iMid;
+            swapMiddleBeamIdx(iu) = bestBM;
+            middleServeCount(iMid, bestBM) = middleServeCount(iMid, bestBM) + 1;
+            uid = userIdStringLocal(userNames, iu);
+            swapRows(end+1).time = tStr; %#ok<AGROW>
+            swapRows(end).geo = geoName;
+            swapRows(end).user_id = uid;
+            swapRows(end).home_sat = satList(iHelp);
+            swapRows(end).home_beam = bH;
+            swapRows(end).service_sat = satList(iMid);
+            swapRows(end).service_beam = bestBM;
+            swapRows(end).user_satisfaction = bestSat;
+        end
+    end
+end
+end
+
+function [relayAssignedMask, relaySatIdx, relayBeamIdx] = assignRelayUsersLocal( ...
+    satGeom, satList, userSatIdx, userBeamIdx, shutOffMat, swapServiceMask, P_users_km, ...
+    PbeamActualMat_W, beamHalfEW_deg, beamHalfNS_deg, P, userDemand_bps, relayMinNativeSat, relayMinRelayAvgSat)
+Nsat = numel(satList);
+Nuser = numel(userSatIdx);
+relaySatIdx = zeros(Nuser, 1);
+relayBeamIdx = zeros(Nuser, 1);
+relayAssignedMask = false(Nuser, 1);
+beamRelayCount = zeros(Nsat, size(satGeom(1).b_all, 2));
+
+distressedUsers = false(Nuser, 1);
+for iu = 1:Nuser
+    if swapServiceMask(iu)
+        continue;
+    end
+    iSat = userSatIdx(iu);
+    b = userBeamIdx(iu);
+    if iSat < 1 || b < 1
+        continue;
+    end
+    Phome = PbeamActualMat_W(iSat, b);
+    if ~isfinite(Phome) || Phome <= 0
+        distressedUsers(iu) = true;
+    end
+end
+
+distressedList = find(distressedUsers);
+for k = 1:numel(distressedList)
+    iu = distressedList(k);
+    userLat = asind(P_users_km(3,iu) / max(norm(P_users_km(:,iu)), eps));
+    userLon = atan2d(P_users_km(2,iu), P_users_km(1,iu));
+    homeSat = userSatIdx(iu);
+
+    candSat = zeros(0, 1);
+    candBeam = zeros(0, 1);
+    candDist = zeros(0, 1);
+    for iSat = 1:Nsat
+        if iSat == homeSat
+            continue;
+        end
+        [bestBeam, ~] = bestCoveredBeamForUserLocal(satGeom(iSat), P_users_km(:,iu), ...
+            beamHalfEW_deg, beamHalfNS_deg);
+        if bestBeam < 1
+            continue;
+        end
+        Phelper = PbeamActualMat_W(iSat, bestBeam);
+        if ~isfinite(Phelper) || Phelper <= 0
+            continue;
+        end
+        candSat(end+1,1) = iSat; %#ok<AGROW>
+        candBeam(end+1,1) = bestBeam; %#ok<AGROW>
+        candDist(end+1,1) = greatCircleDistanceDegLocal(userLat, userLon, ...
+            satGeom(iSat).subLat, satGeom(iSat).subLon); %#ok<AGROW>
+    end
+
+    if isempty(candSat)
+        continue;
+    end
+    [candDist, order] = sort(candDist, 'ascend');
+    candSat = candSat(order);
+    candBeam = candBeam(order);
+
+    for c = 1:numel(candSat)
+        iSat = candSat(c);
+        b = candBeam(c);
+        relayOnBeam = find(relayAssignedMask & relaySatIdx == iSat & relayBeamIdx == b);
+        relayListTry = [relayOnBeam; iu];
+        nativeList = find(userSatIdx == iSat & userBeamIdx == b & ~swapServiceMask);
+        Pbeam = PbeamActualMat_W(iSat, b);
+        planTry = planHelperBeamRelayPowerSplitLocal(iSat, b, nativeList, relayListTry, Pbeam, ...
+            satGeom, P_users_km, P, userDemand_bps, relayMinNativeSat, relayMinRelayAvgSat);
+        if ~planTry.feasible
+            continue;
+        end
+        relaySatIdx(iu) = iSat;
+        relayBeamIdx(iu) = b;
+        relayAssignedMask(iu) = true;
+        beamRelayCount(iSat, b) = beamRelayCount(iSat, b) + 1;
+        break;
+    end
+end
+end
+
+function tf = isRelayPowerShiftUnlimitedLocal(opts)
+tf = isfield(opts, 'relayPowerShiftMode') && string(opts.relayPowerShiftMode) == "helperSatPoolUnlimited";
+end
+
+function p_W = beamPowerBudgetForSwapLocal(opts)
+if isRelayPowerShiftUnlimitedLocal(opts)
+    p_W = double(opts.beamAllocatePower_W);
+else
+    p_W = double(opts.maxBeamPower_W);
+end
+end
+
+function Pserve_W = beamPowerServeMatrixLocal(shutOffMat, PbeamBase_W, beamAllocatePower_W)
+Pserve_W = zeros(size(PbeamBase_W));
+onMask = PbeamBase_W > 0 & shutOffMat == 0;
+Pserve_W(onMask) = beamAllocatePower_W;
+end
+
+function recipientBeams = relayRecipientBeamsOnHelperLocal(iHelp, distressedIdx, shutOffMat, PbeamBase_W, ...
+    userSatIdx, userBeamIdx, swapServiceMask, satGeom, ~, P_users_km, beamHalfEW_deg, beamHalfNS_deg)
+recipientBeams = zeros(0, 1);
+Nbeam = size(shutOffMat, 2);
+for iMid = distressedIdx(:).'
+    if iMid == iHelp
+        continue;
+    end
+    onMidMask = userSatIdx == iMid & userBeamIdx > 0 & ~swapServiceMask;
+    distressedOnMid = find(onMidMask);
+    keep = false(numel(distressedOnMid), 1);
+    for kk = 1:numel(distressedOnMid)
+        iuCheck = distressedOnMid(kk);
+        keep(kk) = shutOffMat(iMid, userBeamIdx(iuCheck)) > 0;
+    end
+    distressedOnMid = distressedOnMid(keep);
+    for k = 1:numel(distressedOnMid)
+        iu = distressedOnMid(k);
+        for bR = 1:Nbeam
+            if PbeamBase_W(iHelp, bR) <= 0 || shutOffMat(iHelp, bR) > 0
+                continue;
+            end
+            if ~userCoveredByBeamLocal(satGeom(iHelp), bR, P_users_km(:, iu), beamHalfEW_deg, beamHalfNS_deg)
+                continue;
+            end
+            if ~any(recipientBeams == bR)
+                recipientBeams(end+1, 1) = bR; %#ok<AGROW>
+            end
+        end
+    end
+end
+end
+
+function [PbeamEffective_W, shiftRows] = poolHelperSpareToRelayBeamsUnlimitedLocal( ...
+    tStr, geoName, satGeom, satList, userSatIdx, userBeamIdx, shutOffMat, swapServiceMask, ...
+    PbeamServe_W, P_users_km, P, userDemand_bps, beamAllocatePower_W, beamHalfEW_deg, beamHalfNS_deg)
+% Each open helper beam starts at beamAllocatePower_W (e.g. 1.05 W). Before relay, pool
+% spare on every open beam: allocate minus per-native power to reach sat=1 (sat=1 surplus
+% excluded). Includes spare freed when middle swap removed natives. Split pool equally
+% across helper beams that cover users on shut middle beams; no max power cap.
+Nsat = numel(satList);
+Nbeam = size(satGeom(1).b_all, 2);
+PbeamEffective_W = PbeamServe_W;
+shiftRows = struct('time', {}, 'geo', {}, 'helper_sat', {}, 'donor_beam', {}, 'spare_W', {}, ...
+    'recipient_beam', {}, 'allocated_W', {}, 'recipient_final_power_W', {});
+distressedIdx = find(any(shutOffMat > 0, 2));
+if isempty(distressedIdx)
+    return;
+end
+
+for iHelp = 1:Nsat
+    donorBeams = zeros(0, 1);
+    donorSpare_W = zeros(0, 1);
+    recipientBeams = relayRecipientBeamsOnHelperLocal(iHelp, distressedIdx, shutOffMat, ...
+        PbeamServe_W, userSatIdx, userBeamIdx, swapServiceMask, satGeom, satList, P_users_km, ...
+        beamHalfEW_deg, beamHalfNS_deg);
+    if isempty(recipientBeams)
+        continue;
+    end
+
+    for bH = 1:Nbeam
+        if PbeamServe_W(iHelp, bH) <= 0 || shutOffMat(iHelp, bH) > 0
+            continue;
+        end
+        nativeList = find(userSatIdx == iHelp & userBeamIdx == bH & ~swapServiceMask);
+        spare_W = helperBeamDonorSparePowerLocal(nativeList, iHelp, bH, beamAllocatePower_W, ...
+            beamAllocatePower_W, satGeom, P_users_km, P, userDemand_bps);
+        if spare_W <= 1e-12
+            continue;
+        end
+        donorBeams(end+1, 1) = bH; %#ok<AGROW>
+        donorSpare_W(end+1, 1) = spare_W; %#ok<AGROW>
+    end
+
+    if isempty(donorBeams)
+        continue;
+    end
+
+    pool_W = sum(donorSpare_W);
+    allocPerRecipient_W = pool_W / numel(recipientBeams);
+    for r = 1:numel(recipientBeams)
+        bR = recipientBeams(r);
+        add_W = allocPerRecipient_W;
+        if add_W <= 0
+            continue;
+        end
+        PbeamEffective_W(iHelp, bR) = PbeamEffective_W(iHelp, bR) + add_W;
+        for d = 1:numel(donorBeams)
+            share_W = donorSpare_W(d) * (add_W / pool_W);
+            shiftRows(end+1).time = tStr; %#ok<AGROW>
+            shiftRows(end).geo = geoName;
+            shiftRows(end).helper_sat = satList(iHelp);
+            shiftRows(end).donor_beam = donorBeams(d);
+            shiftRows(end).spare_W = donorSpare_W(d);
+            shiftRows(end).recipient_beam = bR;
+            shiftRows(end).allocated_W = share_W;
+            shiftRows(end).recipient_final_power_W = PbeamEffective_W(iHelp, bR);
+        end
+    end
+end
+end
+
+function [PbeamEffective_W, shiftRows] = boostHelperBeamsBeforeRelayLocal( ...
+    tStr, geoName, satGeom, satList, userSatIdx, userBeamIdx, shutOffMat, swapServiceMask, ...
+    PbeamBase_W, P_users_km, P, userDemand_bps, fullBeamPower_W, maxBeamPower_W, ...
+    beamHalfEW_deg, beamHalfNS_deg)
+% After swap: donor spare uses maxBeamPower_W budget minus native reserve x1.
+% fullBeamPower_W is nominal on-air (e.g. 0.85 W); maxBeamPower_W is per-beam cap (e.g. 1.05 W).
+% If natives are gone after swap, spare = maxBeamPower_W (includes 1.05-0.85 headroom).
+Nsat = numel(satList);
+Nbeam = size(satGeom(1).b_all, 2);
+PbeamEffective_W = PbeamBase_W;
+shiftRows = struct('time', {}, 'geo', {}, 'helper_sat', {}, 'donor_beam', {}, 'spare_W', {}, ...
+    'recipient_beam', {}, 'allocated_W', {}, 'recipient_final_power_W', {});
+distressedIdx = find(any(shutOffMat > 0, 2));
+if isempty(distressedIdx)
+    return;
+end
+
+for iHelp = 1:Nsat
+    donorBeams = zeros(0, 1);
+    donorSpare_W = zeros(0, 1);
+    recipientBeams = relayRecipientBeamsOnHelperLocal(iHelp, distressedIdx, shutOffMat, PbeamBase_W, ...
+        userSatIdx, userBeamIdx, swapServiceMask, satGeom, satList, P_users_km, beamHalfEW_deg, beamHalfNS_deg);
+
+    for iMid = distressedIdx(:).'
+        if iMid == iHelp
+            continue;
+        end
+        middleOpenBeams = find(shutOffMat(iMid, :) == 0 & PbeamBase_W(iMid, :) > 0);
+
+        for bH = 1:Nbeam
+            if PbeamBase_W(iHelp, bH) <= 0 || shutOffMat(iHelp, bH) > 0
+                continue;
+            end
+            if ~helperBeamHasUserCoverableByMiddleOpenLocal(iHelp, bH, iMid, middleOpenBeams, ...
+                    userSatIdx, userBeamIdx, satGeom, P_users_km, beamHalfEW_deg, beamHalfNS_deg)
+                continue;
+            end
+            if any(donorBeams == bH)
+                continue;
+            end
+            nativeList = find(userSatIdx == iHelp & userBeamIdx == bH & ~swapServiceMask);
+            spare_W = helperBeamDonorSparePowerLocal(nativeList, iHelp, bH, fullBeamPower_W, ...
+                maxBeamPower_W, satGeom, P_users_km, P, userDemand_bps);
+            if spare_W <= 1e-12
+                continue;
+            end
+            donorBeams(end+1, 1) = bH; %#ok<AGROW>
+            donorSpare_W(end+1, 1) = spare_W; %#ok<AGROW>
+        end
+    end
+
+    if isempty(donorBeams) || isempty(recipientBeams)
+        continue;
+    end
+
+    pool_W = sum(donorSpare_W);
+    allocPerRecipient_W = pool_W / numel(recipientBeams);
+    for r = 1:numel(recipientBeams)
+        bR = recipientBeams(r);
+        add_W = min(maxBeamPower_W - PbeamEffective_W(iHelp, bR), allocPerRecipient_W);
+        if add_W <= 0
+            continue;
+        end
+        PbeamEffective_W(iHelp, bR) = PbeamEffective_W(iHelp, bR) + add_W;
+        for d = 1:numel(donorBeams)
+            share_W = donorSpare_W(d) * (add_W / pool_W);
+            shiftRows(end+1).time = tStr; %#ok<AGROW>
+            shiftRows(end).geo = geoName;
+            shiftRows(end).helper_sat = satList(iHelp);
+            shiftRows(end).donor_beam = donorBeams(d);
+            shiftRows(end).spare_W = donorSpare_W(d);
+            shiftRows(end).recipient_beam = bR;
+            shiftRows(end).allocated_W = share_W;
+            shiftRows(end).recipient_final_power_W = PbeamEffective_W(iHelp, bR);
+        end
+    end
+end
+end
+
+function satisfaction = evaluateUserSatisfactionWithSwapRelayLocal( ...
+    satGeom, satList, userSatIdx, userBeamIdx, userCountMat, P_users_km, PbeamEffective_W, ...
+    swapServiceMask, swapMiddleSatIdx, swapMiddleBeamIdx, middleServeCount, relayAssignedMask, ...
+    relaySatIdx, relayBeamIdx, P, userDemand_bps, relayMinNativeSat, relayMinRelayAvgSat)
+Nsat = numel(satList);
+Nbeam = size(satGeom(1).b_all, 2);
+Nuser = numel(userSatIdx);
+satisfaction = zeros(Nuser, 1);
+beamRelayCount = zeros(Nsat, Nbeam);
+relayUsers = find(relayAssignedMask);
+for k = 1:numel(relayUsers)
+    iu = relayUsers(k);
+    beamRelayCount(relaySatIdx(iu), relayBeamIdx(iu)) = beamRelayCount(relaySatIdx(iu), relayBeamIdx(iu)) + 1;
+end
+
+beamSplitCache = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for iu = 1:Nuser
+    if swapServiceMask(iu)
+        iSat = swapMiddleSatIdx(iu);
+        b = swapMiddleBeamIdx(iu);
+        Pbeam = PbeamEffective_W(iSat, b);
+        usersInBeam = max(double(middleServeCount(iSat, b)), 1);
+        satisfaction(iu) = userSatisfactionAtBeamLocal(iu, iSat, b, Pbeam, usersInBeam, ...
+            satGeom, P_users_km, P, userDemand_bps);
+        continue;
+    end
+    if relayAssignedMask(iu)
+        iSat = relaySatIdx(iu);
+        b = relayBeamIdx(iu);
+    else
+        iSat = userSatIdx(iu);
+        b = userBeamIdx(iu);
+    end
+    if iSat < 1 || b < 1
+        continue;
+    end
+    Pbeam = PbeamEffective_W(iSat, b);
+    if beamRelayCount(iSat, b) > 0
+        key = sprintf('%d_%d', iSat, b);
+        if ~isKey(beamSplitCache, key)
+            beamSplitCache(key) = buildBeamRelayPowerSplitLocal(iSat, b, userSatIdx, userBeamIdx, ...
+                swapServiceMask, relayAssignedMask, relaySatIdx, relayBeamIdx, Pbeam, satGeom, ...
+                P_users_km, P, userDemand_bps, relayMinNativeSat, relayMinRelayAvgSat);
+        end
+        split = beamSplitCache(key);
+        if isKey(split.byIu, iu)
+            satisfaction(iu) = split.byIu(iu);
+        end
+    else
+        usersInBeam = max(double(userCountMat(iSat, b)), 1);
+        if any(swapServiceMask & userSatIdx == iSat & userBeamIdx == b)
+            usersInBeam = max(usersInBeam - sum(swapServiceMask & userSatIdx == iSat & userBeamIdx == b), 1);
+        end
+        satisfaction(iu) = userSatisfactionAtBeamLocal(iu, iSat, b, Pbeam, usersInBeam, ...
+            satGeom, P_users_km, P, userDemand_bps);
+    end
+end
+end
+
+function tf = helperBeamHasUserCoverableByMiddleOpenLocal(iHelp, bH, iMid, middleOpenBeams, ...
+    userSatIdx, userBeamIdx, satGeom, P_users_km, beamHalfEW_deg, beamHalfNS_deg)
+tf = false;
+usersOnBeam = find(userSatIdx == iHelp & userBeamIdx == bH);
+for k = 1:numel(usersOnBeam)
+    iu = usersOnBeam(k);
+    for bM = middleOpenBeams
+        if userCoveredByBeamLocal(satGeom(iMid), bM, P_users_km(:, iu), beamHalfEW_deg, beamHalfNS_deg)
+            tf = true;
+            return;
+        end
+    end
+end
+end
+
+function tf = userCoveredByBeamLocal(satGeomOne, beamIdx, P_user_km, beamHalfEW_deg, beamHalfNS_deg)
+P_leo_km = satGeomOne.P_leo_km;
+b_hat = satGeomOne.b_all(:, beamIdx);
+c_axis = satGeomOne.c_axis;
+v_user_km = P_user_km(:) - P_leo_km(:);
+d_m = norm(v_user_km) * 1000;
+if d_m < 1
+    tf = false;
+    return;
+end
+d_hat = v_user_km / max(norm(v_user_km), eps);
+t_axis = cross(c_axis, b_hat);
+t_axis = t_axis / max(norm(t_axis), eps);
+th_h = atan2d(dot(d_hat, c_axis), dot(d_hat, b_hat));
+th_v = atan2d(dot(d_hat, t_axis), dot(d_hat, b_hat));
+tf = abs(th_h) <= beamHalfEW_deg && abs(th_v) <= beamHalfNS_deg;
+end
+
+function uid = userIdStringLocal(userNames, iu)
+if iu <= numel(userNames)
+    uid = string(userNames(iu));
+else
+    uid = sprintf('User_%d', iu);
+end
+end
+
+function s = userSatisfactionAtBeamLocal(iu, iSat, b, Pbeam, usersInBeam, satGeom, P_users_km, P, userDemand_bps)
+if iSat < 1 || b < 1 || ~isfinite(Pbeam) || Pbeam <= 0
+    s = 0;
+    return;
+end
+Buser = P.B_Hz;
+noisePower_W = P.kB * P.user_noise_temp_K * Buser;
+Gur_lin = 10^(P.GS_LEO_Gmax_dBi/10);
+demandMbps = userDemand_bps / 1e6;
+channelGain = userLinkChannelGainPerWLocal(satGeom(iSat), b, P_users_km(:,iu), P, Gur_lin);
+sig = Pbeam * channelGain;
+sinr = sig / max(noisePower_W, eps);
+cinst_bps = Buser * log2(1 + sinr);
+usersInBeam = max(double(usersInBeam), 1);
+rate_Mbps = cinst_bps / usersInBeam / 1e6;
+s = min(rate_Mbps / max(demandMbps, eps), 1);
+end
+
+function Ptx_W = transmitPowerForUserTargetSatLocal(iu, iSat, b, targetSat, usersInBeam, ...
+    satGeom, P_users_km, P, userDemand_bps)
+targetSat = max(0, min(1, double(targetSat)));
+Buser = P.B_Hz;
+noisePower_W = P.kB * P.user_noise_temp_K * Buser;
+Gur_lin = 10^(P.GS_LEO_Gmax_dBi/10);
+usersInBeam = max(double(usersInBeam), 1);
+targetCapacityPerUser_bps = targetSat * userDemand_bps * usersInBeam;
+sinrReq = 2^(targetCapacityPerUser_bps / max(Buser, eps)) - 1;
+channelGain = userLinkChannelGainPerWLocal(satGeom(iSat), b, P_users_km(:, iu), P, Gur_lin);
+if channelGain <= 0 || ~isfinite(channelGain)
+    Ptx_W = inf;
+else
+    Ptx_W = sinrReq * noisePower_W / channelGain;
+end
+end
+
+function [P_native_sum_W, PuserTarget_W] = nativePowerReserveSumAtSatLocal(nativeList, iSat, b, ...
+    targetSat, satGeom, P_users_km, P, userDemand_bps)
+nNative = numel(nativeList);
+PuserTarget_W = nan(nNative, 1);
+if nNative == 0
+    P_native_sum_W = 0;
+    return;
+end
+for jj = 1:nNative
+    iu = nativeList(jj);
+    PuserTarget_W(jj) = transmitPowerForUserTargetSatLocal(iu, iSat, b, targetSat, nNative, ...
+        satGeom, P_users_km, P, userDemand_bps);
+end
+if any(~isfinite(PuserTarget_W))
+    P_native_sum_W = inf;
+else
+    P_native_sum_W = sum(PuserTarget_W);
+end
+end
+
+function avgSat = meanNativeSatForTotalPowerLocal(nativeList, iSat, b, P_native_W, nNative, ...
+    satGeom, P_users_km, P, userDemand_bps)
+if nNative < 1 || ~isfinite(P_native_W) || P_native_W <= 0
+    avgSat = 0;
+    return;
+end
+PtxEach_W = P_native_W / nNative;
+satVals = zeros(nNative, 1);
+for jj = 1:nNative
+    iu = nativeList(jj);
+    satVals(jj) = userSatisfactionAtBeamLocal(iu, iSat, b, PtxEach_W, nNative, ...
+        satGeom, P_users_km, P, userDemand_bps);
+end
+avgSat = mean(satVals);
+end
+
+function avgSat = meanRelaySatForRelayPowerLocal(relayList, iSat, b, P_relay_W, ...
+    satGeom, P_users_km, P, userDemand_bps)
+nRelay = numel(relayList);
+if nRelay < 1
+    avgSat = 1;
+    return;
+end
+if ~isfinite(P_relay_W) || P_relay_W <= 0
+    avgSat = 0;
+    return;
+end
+PtxEach_W = P_relay_W / nRelay;
+satVals = zeros(nRelay, 1);
+for jj = 1:nRelay
+    iu = relayList(jj);
+    satVals(jj) = userSatisfactionAtBeamLocal(iu, iSat, b, PtxEach_W, nRelay, ...
+        satGeom, P_users_km, P, userDemand_bps);
+end
+avgSat = mean(satVals);
+end
+
+function [x_W, PtxEach_W] = nativeTotalPowerForAverageSatLocal(nativeList, iSat, b, targetAvgSat, ...
+    Pbeam, satGeom, P_users_km, P, userDemand_bps)
+nNative = numel(nativeList);
+if nNative == 0
+    x_W = 0;
+    PtxEach_W = 0;
+    return;
+end
+targetAvgSat = max(0, min(1, double(targetAvgSat)));
+if ~isfinite(Pbeam) || Pbeam <= 0
+    x_W = inf;
+    PtxEach_W = inf;
+    return;
+end
+avgAtBeam = meanNativeSatForTotalPowerLocal(nativeList, iSat, b, Pbeam, nNative, ...
+    satGeom, P_users_km, P, userDemand_bps);
+if avgAtBeam < targetAvgSat - 1e-9
+    x_W = inf;
+    PtxEach_W = inf;
+    return;
+end
+lo = 0;
+hi = Pbeam;
+for it = 1:64
+    mid = 0.5 * (lo + hi);
+    avgMid = meanNativeSatForTotalPowerLocal(nativeList, iSat, b, mid, nNative, ...
+        satGeom, P_users_km, P, userDemand_bps);
+    if avgMid >= targetAvgSat
+        hi = mid;
+    else
+        lo = mid;
+    end
+end
+x_W = hi;
+PtxEach_W = x_W / nNative;
+end
+
+function plan = planHelperBeamRelayPowerSplitLocal(iSat, b, nativeList, relayList, Pbeam, ...
+    satGeom, P_users_km, P, userDemand_bps, nativeAvgSatFloor, relayAvgSatTarget)
+plan = struct('feasible', false, 'nativeMode', "", 'P_native_W', 0, 'P_relay_W', 0, ...
+    'PuserNative_W', [], 'nativeList', nativeList, 'relayList', relayList);
+nativeAvgSatFloor = max(0, min(1, double(nativeAvgSatFloor)));
+relayAvgSatTarget = max(0, min(1, double(relayAvgSatTarget)));
+
+if ~isfinite(Pbeam) || Pbeam <= 0
+    return;
+end
+
+nNative = numel(nativeList);
+nRelay = numel(relayList);
+if nNative == 0
+    plan.feasible = true;
+    plan.nativeMode = "none";
+    plan.P_native_W = 0;
+    plan.P_relay_W = Pbeam;
+    plan.PuserNative_W = zeros(0, 1);
+    return;
+end
+
+[x1_W, Puser1_W] = nativePowerReserveSumAtSatLocal(nativeList, iSat, b, 1.0, ...
+    satGeom, P_users_km, P, userDemand_bps);
+useSat1 = isfinite(x1_W) && x1_W <= Pbeam + 1e-12;
+if useSat1 && nRelay > 0
+    y_W = Pbeam - x1_W;
+    avgRelay = meanRelaySatForRelayPowerLocal(relayList, iSat, b, y_W, ...
+        satGeom, P_users_km, P, userDemand_bps);
+    useSat1 = avgRelay >= relayAvgSatTarget - 1e-9;
+elseif useSat1 && nRelay == 0
+    useSat1 = true;
+end
+
+if useSat1
+    plan.feasible = true;
+    plan.nativeMode = "perUserSat1";
+    plan.P_native_W = x1_W;
+    plan.P_relay_W = max(Pbeam - x1_W, 0);
+    plan.PuserNative_W = Puser1_W;
+    return;
+end
+
+[x9_W, PtxEach9_W] = nativeTotalPowerForAverageSatLocal(nativeList, iSat, b, nativeAvgSatFloor, ...
+    Pbeam, satGeom, P_users_km, P, userDemand_bps);
+if ~isfinite(x9_W) || x9_W > Pbeam + 1e-12
+    return;
+end
+plan.feasible = true;
+plan.nativeMode = "equalSplitAvgFloor";
+plan.P_native_W = x9_W;
+plan.P_relay_W = max(Pbeam - x9_W, 0);
+plan.PuserNative_W = PtxEach9_W * ones(nNative, 1);
+end
+
+function split = buildBeamRelayPowerSplitLocal(iSat, b, userSatIdx, userBeamIdx, ...
+    swapServiceMask, relayAssignedMask, relaySatIdx, relayBeamIdx, Pbeam, satGeom, P_users_km, P, ...
+    userDemand_bps, nativeAvgSatFloor, relayAvgSatTarget)
+nativeList = find(userSatIdx == iSat & userBeamIdx == b & ~swapServiceMask);
+relayList = find(relayAssignedMask & relaySatIdx == iSat & relayBeamIdx == b);
+nNative = numel(nativeList);
+nRelay = numel(relayList);
+split.byIu = containers.Map('KeyType', 'double', 'ValueType', 'double');
+
+plan = planHelperBeamRelayPowerSplitLocal(iSat, b, nativeList, relayList, Pbeam, ...
+    satGeom, P_users_km, P, userDemand_bps, nativeAvgSatFloor, relayAvgSatTarget);
+if ~plan.feasible
+    return;
+end
+
+if nNative > 0
+    for jj = 1:nNative
+        iu = nativeList(jj);
+        Ptx_W = plan.PuserNative_W(jj);
+        if ~isfinite(Ptx_W) || Ptx_W < 0
+            continue;
+        end
+        split.byIu(iu) = userSatisfactionAtBeamLocal(iu, iSat, b, Ptx_W, nNative, ...
+            satGeom, P_users_km, P, userDemand_bps);
+    end
+end
+
+if nRelay > 0
+    Ptx_relay_W = plan.P_relay_W / nRelay;
+    for jj = 1:nRelay
+        iu = relayList(jj);
+        split.byIu(iu) = userSatisfactionAtBeamLocal(iu, iSat, b, Ptx_relay_W, nRelay, ...
+            satGeom, P_users_km, P, userDemand_bps);
+    end
 end
 end
 
@@ -608,6 +1608,23 @@ phi = hypot(th_h, th_v);
 Gt_lin = max(P.A_fit * exp(P.beta_fit * phi), 1e-30);
 pathGain = (P.lambda_m^2) / max((4*pi*d_m)^2, eps);
 channelGain = Gt_lin * Gur_lin * pathGain;
+end
+
+function spare_W = helperBeamDonorSparePowerLocal(nativeList, iHelp, bH, nominalBeamPower_W, ...
+    maxBeamPower_W, satGeom, P_users_km, P, userDemand_bps)
+% nominalBeamPower_W: documented for callers (EPFD nominal); reserve uses maxBeamPower_W.
+% With natives: spare = budget - sum(per-user min power for sat=1); sat=1 surplus excluded.
+% No natives after swap: entire beam budget is spare.
+if isempty(nativeList)
+    spare_W = max(0, maxBeamPower_W);
+    return;
+end
+[x1_W, ~] = nativePowerReserveSumAtSatLocal(nativeList, iHelp, bH, 1.0, satGeom, P_users_km, P, userDemand_bps);
+if ~isfinite(x1_W)
+    spare_W = 0;
+else
+    spare_W = max(maxBeamPower_W - x1_W, 0);
+end
 end
 
 function [bestBeam, bestMetric] = bestCoveredBeamForUserLocal(satGeomOne, P_user_km, beamHalfEW_deg, beamHalfNS_deg)
