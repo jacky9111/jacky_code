@@ -99,289 +99,262 @@ satUserTargets = [
 AddUsersAroundSatellitesToSTK(root, satUserTargets, 1888, 30);
 
 
-%% ================== Ku EPFD：16 束（純 MATLAB）+ 每秒 Excel ==================
-% STK 端只保留上面單一 RectBeam（快速看 seamless / relay）；不在 STK 建 16 個 sensor。
-% 下列僅從 STK 讀 LEO / GEO / GSO 地面站位置與速度，16 束北→南在 MATLAB 內模擬（RunEpfd16BeamsKuLogExcel）。
-% 地面站命名：*/Facility/GSO_GS_<GEO衛星名>（與 SystemWide16 一致）
-leo_part = [
-    "P01_S01"
-    "P01_S02"
-    "P01_S49"
-    "P01_S48"
-    "P01_S47"
-    "P02_S01"
-    "P02_S02"
-    "P02_S49"
-    "P02_S48"
-    "P02_S47"
-    "P03_S01"
-    "P03_S02"
-    "P03_S49"
-    "P03_S48"
-    "P03_S47"
-    "P04_S01"
-    "P04_S02"
-    "P04_S49"
-    "P04_S48"
-    "P04_S47"
-    "P05_S01"
-    "P05_S02"
-    "P05_S49"
-    "P05_S48"
-    "P05_S47"
-];
+%% ================== 四方法模擬 → Excel ==================
+% (1) Beam shutdown only   (2) PC + Tilt (Ren et al., Ku16)
+% (3) Relay only           (4) SAPR-R (Relay + middle safe-beam swap)
+% 共用 eval* / evalEnv；僅控制模型不同。下方 Evaluation 區讀這些 xlsx 畫圖一～三。
 
-geo_part = [
-    "GS_01"
-];
+% --- 共用評估環境（改這裡四條曲線一起變）---
+evalCriticalSat = "P03_S49";
+evalRecordSats = ["P03_S01", "P03_S49", "P03_S48"];  % Excel 詳列：滿意度 / Ku16 Per* 只寫這三顆
+evalTStartStr = "16 Dec 2025 12:11:00";
+evalTEndStr = "16 Dec 2025 12:13:30";
+evalStepSec = 1;
+evalBeamHalfEW_deg = 34.0;        % 與 RectBeam -5 dB 一致
+evalBeamHalfNS_deg = 33.5 / 16;
+evalGsLat_deg = 0;
+evalGsLon_deg = 120.4;            % Ideal GSO @ GS
+evalUsersPerSat_Matrix = [30, 50, 70];  % 改這裡：圖一～五，一次跑多個 U、每 U 跑四方法
+evalUserDemand_Mbps = 50;
+evalFullBeamPower_W = 1.05;       % 開束 on-air；Ku16 Ptotal_W = ×16
+evalMaxBeamPower_W = 2;           % helper relay beam 功率上限（僅 full-power）
+evalEpfdThr_dB_Baseline = -173.4; % 圖一～五 EPFD 門檻
 
-optsEpfd = struct();
-optsEpfd.leoList = cellstr(leo_part);
-optsEpfd.geoList = cellstr(geo_part);
-optsEpfd.stepSec = 1;
-optsEpfd.excelPath = char(fullfile(file_path, 'Matlab_data', 'LEO16_EPFD_Ku_log.xlsx'));
-optsEpfd.params = ku_epfd_params(); % 物理/鏈路參數見 ku_epfd_params.m
-optsEpfd.beamHalfEW_deg = 36;
-optsEpfd.beamHalfNS_deg = 36.5/16;
-optsEpfd.controlMode = "aggregate"; % "aggregate" or "per_beam"
-% optsEpfd.minOnBeams = 4; % 先關閉保底限制，觀察純干擾驅動的關束規律
-% 直接指定 EPFD 模擬起訖時間（UTCG 格式）：dd mmm yyyy HH:MM:SS
-% optsEpfd.tStartStr = char(sc.StartTime);  % 例: '24 Mar 2026 00:00:00'
-% optsEpfd.tEndStr   = char(sc.StopTime);   % 例: '24 Mar 2026 00:10:00'
-% 若你想手動寫死時間，可改成：
-optsEpfd.tStartStr = '16 Dec 2025 12:21:53';
-optsEpfd.tEndStr   = '16 Dec 2025 12:29:33';
-% RunEpfd16BeamsKuLogExcel(root, optsEpfd);
+footprintEW_km = 2 * alt_km * tand(evalBeamHalfEW_deg);
+footprintNS_km = 2 * alt_km * tand(33.5);
+evalUserAreaSide_km = max(footprintEW_km, footprintNS_km);
 
-%% ================== Ku 16-beam baseline observation (no EPFD power backoff) ==================
-optsBase = optsEpfd;
-optsBase.excelPath = char(fullfile(file_path, 'Matlab_data', 'LEO16_Ku_Baseline_Observation.xlsx'));
-optsBase.usersPerSat = 12;
-optsBase.satTotalDemandGbps =0.3; % fixed per-satellite total demand
-optsBase.enablePowerControl = false; % no uniform scale-down vs EPFD_thr; compare agains
-optsBase.useGsoNoiseInQualityMetric = true;
-optsBase.excelSatelliteIds = {'P01_S62', 'P01_S61', 'P01_S60'}; % Excel only; full leoList still used in physics
-RunKu16BeamBaselineObservationLogExcel(root, optsBase);
+for iUserSweep = 1:numel(evalUsersPerSat_Matrix)
+    evalUsersPerSat = evalUsersPerSat_Matrix(iUserSweep);
+    numUsersPerSatSweep = evalUsersPerSat;
+    fprintf('\n===== Sweep U%d (%d/%d): four methods (fig.1-5) =====\n', ...
+        numUsersPerSatSweep, iUserSweep, numel(evalUsersPerSat_Matrix));
 
-%% ================== Ku 16-beam baseline observation + EPFD power control ==================
-optsBasePC_simple = optsBase;
-optsBasePC_simple.excelPath = char(fullfile(file_path, 'Matlab_data', 'LEO16_Ku_Baseline_Observation_PC.xlsx'));
-optsBasePC_simple.enablePowerControl = true;
-optsBasePC_simple.enablePowerRedistribution = false;
-RunKu16BeamBaselineObservationLogExcel(root, optsBasePC_simple);
+    evalEnv = BuildEvalEnvironmentLocal(evalCriticalSat, evalTStartStr, evalTEndStr, evalStepSec, ...
+        evalBeamHalfEW_deg, evalBeamHalfNS_deg, evalGsLat_deg, evalGsLon_deg, ...
+        evalUsersPerSat, evalUserDemand_Mbps, evalFullBeamPower_W, evalMaxBeamPower_W, ...
+        evalRecordSats, satUserTargets, satUserTargets, @ku_epfd_params);
 
-%% ================== Ku 16-beam baseline observation + PC + bidirectional relay ==================
-optsBasePC_relay = optsBase;
-optsBasePC_relay.excelPath = char(fullfile(file_path, 'Matlab_data', 'LEO16_Ku_Baseline_Observation_PC_BidirectionalRelay.xlsx'));
-optsBasePC_relay.enablePowerControl = true;
-optsBasePC_relay.enablePowerRedistribution = false;
-optsBasePC_relay.enableBidirectionalRelay = true;
-optsBasePC_relay.relaySourceSatelliteId = "P01_S61";
-optsBasePC_relay.relayDistressedSatisfactionFloor = 0.6;
-RunKu16BeamBaselineObservationLogExcel(root, optsBasePC_relay);
+    RunEvalFourMethodSweepsLocal(root, file_path, evalEnv, evalUserAreaSide_km, ...
+        evalCriticalSat, numUsersPerSatSweep, evalEpfdThr_dB_Baseline, false);
+end
 
-%% ================== Ku 16-beam baseline observation + PC + baseline tilt ==================
-optsBasePC_tilt = optsBase;
-optsBasePC_tilt.excelPath = char(fullfile(file_path, 'Matlab_data', 'LEO16_Ku_Baseline_Observation_PC_BaselineTilt.xlsx'));
-optsBasePC_tilt.enablePowerControl = true;
-optsBasePC_tilt.enablePowerRedistribution = false;
-optsBasePC_tilt.enableBaselineTilt = true;
-optsBasePC_tilt.baselineTiltSatelliteId = "P01_S61";
-optsBasePC_tilt.baselineTiltMaxDeg = 10;
-optsBasePC_tilt.baselineTiltStepDeg = 0.5;
-RunKu16BeamBaselineObservationLogExcel(root, optsBasePC_tilt);
+% 圖六 sweep（獨立；單一 U × 多 EPFD，只跑 SAPR-R）
+evalUsersPerSat_Fig6 = 70;  % 改這裡：圖六只用一個 U（畫圖時 numUsersPerSatPlot 請設相同）
+evalEpfdThr_dB_Matrix = [-173.4, -169, -164.5, -160.0];  % 幾個 EPFD → 圖六幾條線
 
-%% ================== Plot method comparison for P01_S61 over latitude-0 GS ==================
-optsPlot = struct();
-optsPlot.targetSatelliteId = "P01_S61";
-optsPlot.baselineExcelPath = optsBase.excelPath;
-optsPlot.pcExcelPath = optsBasePC_simple.excelPath;
-optsPlot.tiltExcelPath = optsBasePC_tilt.excelPath;
-optsPlot.relayExcelPath = optsBasePC_relay.excelPath;
-optsPlot.figurePath = char(fullfile(file_path, 'Matlab_data', 'LEO16_Ku_MethodComparison_S61_GS0.png'));
-optsPlot.tablePath = char(fullfile(file_path, 'Matlab_data', 'LEO16_Ku_MethodComparison_S61_GS0.xlsx'));
-optsPlot.latitudeWindowDeg = 4;
-PlotS61MethodComparisonVsLatitude(root, optsPlot);
+fprintf('\n===== Sweep fig.6: U%d, SAPR-R only =====\n', evalUsersPerSat_Fig6);
+evalEnvFig6 = BuildEvalEnvironmentLocal(evalCriticalSat, evalTStartStr, evalTEndStr, evalStepSec, ...
+    evalBeamHalfEW_deg, evalBeamHalfNS_deg, evalGsLat_deg, evalGsLon_deg, ...
+    evalUsersPerSat_Fig6, evalUserDemand_Mbps, evalFullBeamPower_W, evalMaxBeamPower_W, ...
+    evalRecordSats, satUserTargets, satUserTargets, @ku_epfd_params);
 
+for iEpfdSweep = 1:numel(evalEpfdThr_dB_Matrix)
+    epfdThrSweep = evalEpfdThr_dB_Matrix(iEpfdSweep);
+    if abs(epfdThrSweep - evalEpfdThr_dB_Baseline) < 1e-9
+        continue;  % -173.4 baseline SAPR-R 已在上方四方法 sweep 產生
+    end
+    RunEvalSaprRSweepLocal(root, file_path, evalEnvFig6, evalUserAreaSide_km, ...
+        evalUsersPerSat_Fig6, epfdThrSweep, true);
+end
 
+%% ================== Evaluation（讀 Excel 畫圖；只重畫可註解掉上方 Run*）==================
+% 圖一、二預設用 SAPR-R（RelayWithMiddleSwap）；圖三用四個方法的 xlsx。
+% 只重畫 Evaluation 時，EPFD 矩陣預設如下（應與上方 sweep 一致）：
+if ~exist('evalEpfdThr_dB_Baseline', 'var')
+    evalEpfdThr_dB_Baseline = -173.4;
+end
+if ~exist('evalEpfdThr_dB_Matrix', 'var')
+    evalEpfdThr_dB_Matrix = [-173.4, -169, -164.5, -160.0];
+end
+numUsersPerSatPlot = 50;
+% --- 圖上標題（顯示在座標軸上方；設 "" 則不顯示）---
+evalFigureTitles = struct();
+evalFigureTitles.fig1 = "Aggregate EPFD Compliance over Time";
+evalFigureTitles.fig2 = "Number of closed beams over time";
+evalFigureTitles.fig3 = sprintf("Average User Satisfaction under %d User Loads", numUsersPerSatPlot);
+evalFigureTitles.fig4 = sprintf("Number of Relayed Critical Users under %d User Loads", numUsersPerSatPlot);
+evalFigureTitles.fig5 = sprintf("Satisfaction CDF at Worst EPFD Slot under %d User Loads", numUsersPerSatPlot);
+evalFigureTitles.fig6 = sprintf("SAPR-R Average User Satisfaction under %d User Loads", numUsersPerSatPlot);
+evalFigureTitleFontSize = 13;
+fprintf('Evaluation: read/write tag U%d (*_U%d_*.xlsx / figures)\n', ...
+    numUsersPerSatPlot, numUsersPerSatPlot);
+evalPlotParams = evalEnv.params;
+evalExcelPaths = resolveEvalExcelPathsLocal(file_path, numUsersPerSatPlot);
 
+% --- 圖一：關束後 EPFD vs 相對時間；t=0 = 全束開、backoff 前 EPFD 最高 slot ---
+optsFig1 = struct();
+optsFig1.sweepExcelPath = evalExcelPaths.saprR;
+optsFig1.sheetName = "Slot_EPFD";
+optsFig1.plotEpfdField = "after";
+optsFig1.epfdThreshold_dB = evalPlotParams.EPFD_thr_dB;
+optsFig1.relTimeWindowSec = [-60, 60];
+optsFig1.yLim_dB = [-176, -173];
+optsFig1.figureTitle = evalFigureTitles.fig1;
+optsFig1.titleFontSize = evalFigureTitleFontSize;
+optsFig1.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_EPFD_afterShutdown_vsRelTime', '.png'));
+optsFig1.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_EPFD_afterShutdown_vsRelTime', '.xlsx'));
+PlotFullPowerSweepEpfdVsRelativeTime(root, optsFig1);
 
+% --- 圖二：critical 衛星被關閉 beam 數（SAPR-R 單曲線）；X 軸與圖一相同 ---
+optsFig2 = struct();
+optsFig2.sweepExcelPath = evalExcelPaths.saprR;
+optsFig2.criticalSatellite = evalCriticalSat;
+optsFig2.relTimeWindowSec = [-60, 60];
+optsFig2.timeSegmentEdges = [-60, -40, -20, 0, 20, 40, 60];
+optsFig2.segmentAggregate = "mean";
+optsFig2.yLim = [0, 16];
+optsFig2.figureTitle = evalFigureTitles.fig2;
+optsFig2.titleFontSize = evalFigureTitleFontSize;
+optsFig2.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_ClosedCriticalBeams_vsRelTime', '.png'));
+optsFig2.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_ClosedCriticalBeams_vsRelTime', '.xlsx'));
+PlotFullPowerSweepClosedCriticalBeamsVsTime(root, optsFig2);
 
+% --- 圖三：四方法比較（P03_S49 平均 user 滿意度 vs 時間）；t=0 同圖一 ---
+% 單獨重跑本 cell 時，先依 numUsersPerSatPlot 重建 excel 路徑（避免 U30/U50 混用）。
+evalExcelPaths = resolveEvalExcelPathsLocal(file_path, numUsersPerSatPlot);
+assertFig3ExcelPathsMatchPlotTag(numUsersPerSatPlot, ...
+    {evalExcelPaths.backoffOnly, evalExcelPaths.relayOnly, ...
+    evalExcelPaths.saprR, evalExcelPaths.pcTilt}, evalCriticalSat);
+optsFig3 = struct();
+optsFig3.referenceExcelPath = evalExcelPaths.saprR;
+optsFig3.recordSatellite = evalCriticalSat;
+optsFig3.relTimeWindowSec = [-60, 60];
+optsFig3.yAxisPercent = true;
+optsFig3.yLim = [0, 100];
+optsFig3.methodDefs(1) = struct('label', "Beam shutdown only", ...
+    'excelPath', evalExcelPaths.backoffOnly, 'sourceType', "fullpower");
+optsFig3.methodDefs(2) = struct('label', "PC + Tilt (Ren et al.)", ...
+    'excelPath', evalExcelPaths.pcTilt, 'sourceType', "ku16_pc_tilt");
+optsFig3.methodDefs(3) = struct('label', "Only BPLR", ...
+    'excelPath', evalExcelPaths.relayOnly, 'sourceType', "fullpower");
+optsFig3.methodDefs(4) = struct('label', "SAPR-R", ...
+    'excelPath', evalExcelPaths.saprR, 'sourceType', "fullpower");
+optsFig3.figureTitle = sprintf("Average User Satisfaction under %d User Loads", numUsersPerSatPlot);
+optsFig3.titleFontSize = evalFigureTitleFontSize;
+optsFig3.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_AvgUserSatisfaction_4MethodCompare', '.png'));
+optsFig3.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_AvgUserSatisfaction_4MethodCompare', '.xlsx'));
+if isfile(evalExcelPaths.pcTilt)
+    PlotFullPowerSweepSatisfactionVsTimeCompare(root, optsFig3);
+else
+    warning('jacky:MissingKu16TiltExcel', ...
+        'Skip fig.3: missing %s. Re-run PC+Tilt simulation above.', evalExcelPaths.pcTilt);
+end
 
+% --- 圖四：Only BPLR vs SAPR-R relay user 數（長條圖）；t=0 同圖一 ---
+% X 軸 / Excel 只記 -60,-40,-20,0,20,40,60（與圖二相同）。
+evalExcelPaths = resolveEvalExcelPathsLocal(file_path, numUsersPerSatPlot);
+optsFig4 = struct();
+optsFig4.referenceExcelPath = evalExcelPaths.saprR;
+optsFig4.recordSatellite = evalCriticalSat;
+optsFig4.relTimeWindowSec = [-60, 60];
+optsFig4.timeSegmentEdges = [-60, -40, -20, 0, 20, 40, 60];  % 與圖二相同
+optsFig4.relayUserMetric = "satisfied";
+optsFig4.relaySuccessThreshold = 0.9;
+optsFig4.segmentAggregate = "mean";
+optsFig4.barWidth = 1;
+optsFig4.yLabel = "Number of critical closed-beam user relays";
+optsFig4.yLim = [0, numUsersPerSatPlot];  % Y 軸上限 = 本次 sweep 每星 user 數（U30→30, U50→50）
+optsFig4.figureTitle = sprintf("Number of Relayed Critical Users under %d User Loads", numUsersPerSatPlot);
+optsFig4.titleFontSize = evalFigureTitleFontSize;
+optsFig4.methodDefs(1) = struct('label', "Only BPLR", 'excelPath', evalExcelPaths.relayOnly);
+optsFig4.methodDefs(2) = struct('label', "SAPR-R", 'excelPath', evalExcelPaths.saprR);
+optsFig4.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_RelayUserCount_OnlyBPLR_vs_SAPR-R', '.png'));
+optsFig4.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_RelayUserCount_OnlyBPLR_vs_SAPR-R', '.xlsx'));
+if isfile(evalExcelPaths.relayOnly) && isfile(evalExcelPaths.saprR)
+    PlotFullPowerSweepRelayUserCountCompare(root, optsFig4);
+else
+    warning('jacky:MissingFig4Excel', 'Skip fig.4: need RelayOnly and RelayWithMiddleSwap U%d xlsx.', ...
+        numUsersPerSatPlot);
+end
 
+% --- 圖五：t0 時刻 user 滿意度 CDF（同圖三/四：P03_S49 home cohort @ t0）---
+% full-power 需含 PerUser sheet → 若舊 xlsx 無此 sheet，請重跑 RelayOnly / SAPR-R sweep。
+evalExcelPaths = resolveEvalExcelPathsLocal(file_path, numUsersPerSatPlot);
+optsFig5 = struct();
+optsFig5.referenceExcelPath = evalExcelPaths.saprR;
+optsFig5.userSetMode = "home_cohort";    % 同圖三/四：evalCriticalSat 的 home cohort
+optsFig5.recordSatellite = evalCriticalSat;
+optsFig5.xAxisPercent = false;
+optsFig5.methodDefs(1) = struct('label', "PC + Tilt", ...
+    'excelPath', evalExcelPaths.pcTilt, 'sourceType', "ku16_pc_tilt");
+optsFig5.methodDefs(2) = struct('label', "Only BPLR", ...
+    'excelPath', evalExcelPaths.relayOnly, 'sourceType', "fullpower");
+optsFig5.methodDefs(3) = struct('label', "SAPR-R", ...
+    'excelPath', evalExcelPaths.saprR, 'sourceType', "fullpower");
+% 圖例順序：PC+Tilt → Only BPLR → SAPR-R；顏色固定不隨繪製順序改變
+optsFig5.colors = [0.85 0.33 0.10; 0 0.45 0.74; 0.47 0.67 0.19];
+optsFig5.figureTitle = sprintf("Satisfaction CDF at Worst EPFD Slot under %d User Loads", numUsersPerSatPlot);
+optsFig5.titleFontSize = evalFigureTitleFontSize;
+optsFig5.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_UserSatisfaction_CDF_3MethodCompare', '.png'));
+optsFig5.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_UserSatisfaction_CDF_3MethodCompare', '.xlsx'));
+if isfile(evalExcelPaths.relayOnly) && isfile(evalExcelPaths.saprR) && isfile(evalExcelPaths.pcTilt)
+    try
+        PlotFullPowerSweepUserSatisfactionCdfCompare(root, optsFig5);
+    catch ME
+        if contains(ME.message, 'PerUser')
+            warning('jacky:MissingPerUserSheet', ...
+                ['Skip fig.5: %s. Re-run RelayOnly and SAPR-R sweeps to create PerUser sheet.'], ME.message);
+        else
+            rethrow(ME);
+        end
+    end
+else
+    warning('jacky:MissingFig5Excel', ...
+        'Skip fig.5: need RelayOnly, SAPR-R, and Ku16/PC+Tilt U%d xlsx.', numUsersPerSatPlot);
+end
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-%% ================== 目前時間點 beam 對 GS 的 EPFD 貢獻 ==================
-optsBeamEpfd = struct();
-optsBeamEpfd.satList = satUserTargets;
-optsBeamEpfd.geoList = "IdealGSO_GS01";
-optsBeamEpfd.useIdealGsoAtGs = true;
-optsBeamEpfd.gsName = "GS_01";
-optsBeamEpfd.tStr = tEpochStr;
-optsBeamEpfd.areaSide_km = 1888;
-optsBeamEpfd.params = optsEpfd.params;
-optsBeamEpfd.params.useEIRPDensityModel = true; % OneWeb filing EIRP density (see ku_epfd_params.m)
-optsBeamEpfd.params.EIRPdens_dBW_per_4kHz = -13.4;
-optsBeamEpfd.params.Ptotal_W = 16.8; % used only when useEIRPDensityModel is false
-optsBeamEpfd.userDemand_Mbps = 50;
-optsBeamEpfd.limitPowerToDemand = true;
-optsBeamEpfd.beamHalfEW_deg = 36.5;
-optsBeamEpfd.beamHalfNS_deg = 36.0 / 16;
-optsBeamEpfd.allocatePowerByUsers = true;
-optsBeamEpfd.enforceBeamPowerMax = true;
-optsBeamEpfd.maxBeamPower_W = 1.05;
-optsBeamEpfd.distressSatellite = "P03_S01";
-optsBeamEpfd.distressXi1 = 0.5;
-optsBeamEpfd.distressXi2 = 0.5;
-optsBeamEpfd.helperEta1 = 0.4;
-optsBeamEpfd.helperEta2 = 0.3;
-optsBeamEpfd.helperEta3 = 0.3;
-optsBeamEpfd.userPrefix = "User_";
-optsBeamEpfd.prioritySatellite = "P03_S01";
-optsBeamEpfd.priorityCoverageFirst = true;
-optsBeamEpfd.priorityBeamRange = 3:14;
-% EPFD backoff: target worst-user satisfaction after a step (rate/demand, same as User_State); power is solved by bisection, not P*0.2.
-optsBeamEpfd.previousBeamPowerScale = 0.2;
-% Only backoff beams whose worst-user satisfaction before the step is at least this (default 0.9 ~= "fully served").
-% optsBeamEpfd.epfdBackoffMinInitialUserSat = 0.9;
-optsBeamEpfd.excelPath = char(fullfile(file_path, 'Matlab_data', 'Beam_EPFD_GS01_CurrentEpoch.xlsx'));
-ComputeBeamEpfdToGsExcel(root, optsBeamEpfd);
-
-satShutdownPlotTargets = ["P03_S01", "P03_S49", "P03_S48"];
-
-% RectBeam -5 dB（與 CreateOneWebRectBeam）：EW half=34°, NS half=33.5°
-% 在 h=1200 km、星下點近似：足跡約 1619 km（東西）× 1589 km（南北）
-sweepAlt_km = alt_km;
-rectBeamHalfEW_deg = 34.0;
-rectBeamHalfNS_deg = 33.5;
-footprintEW_km = 2 * sweepAlt_km * tand(rectBeamHalfEW_deg);
-footprintNS_km = 2 * sweepAlt_km * tand(rectBeamHalfNS_deg);
-
-optsFullPowerSweep = struct();
-optsFullPowerSweep.satList = satUserTargets;
-optsFullPowerSweep.geoList = "IdealGSO_GS01";
-optsFullPowerSweep.useIdealGsoAtGs = true;
-optsFullPowerSweep.gsName = "GS_01";
-optsFullPowerSweep.gsLat_deg = 0;
-optsFullPowerSweep.gsLon_deg = 120.4;
-optsFullPowerSweep.gsAlt_km = 0;
-optsFullPowerSweep.tStartStr = "16 Dec 2025 12:11:27";
-optsFullPowerSweep.tEndStr = "16 Dec 2025 12:13:07";
-optsFullPowerSweep.stepSec = 2;
-optsFullPowerSweep.beamHalfEW_deg = rectBeamHalfEW_deg;
-optsFullPowerSweep.beamHalfNS_deg = rectBeamHalfNS_deg / 16; % 16 束南北疊成整體 33.5°
-optsFullPowerSweep.fullBeamPower_W = 0.85; % nominal on-air when beam is on (EPFD backoff)
-optsFullPowerSweep.maxBeamPower_W = 2; % per-beam budget cap for serve / power shift
-optsFullPowerSweep.params = optsEpfd.params;
-optsFullPowerSweep.params.useEIRPDensityModel = false;
-optsFullPowerSweep.params.EIRPdens_dBW_per_4kHz = -13.4;
-optsFullPowerSweep.userDemand_Mbps = optsBeamEpfd.userDemand_Mbps;
-optsFullPowerSweep.useSimulatedUsers = true;
-optsFullPowerSweep.reassignUsersEachSlot = true;
-optsFullPowerSweep.userPlacementSatList = leo_part;
-numUsersPerSatSweep = 50;   % sweep 模擬：每顆衛星 user 數（也寫進 Excel 檔名 U50）
-numUsersPerSatPlot = 50; % 畫圖讀哪個 U* 的 Excel；只重畫可改這裡（例：70）
-optsFullPowerSweep.numUsersPerSatellite = numUsersPerSatSweep;
-optsFullPowerSweep.userAreaSide_km = max(footprintEW_km, footprintNS_km);
-optsFullPowerSweep.satisfactionSatList = satShutdownPlotTargets;
-optsFullPowerSweep.enableRelay = true;
-optsFullPowerSweep.relayMinNativeSat = 0.9;
-optsFullPowerSweep.satisfactionRecordSatList = satShutdownPlotTargets; % 家鄉衛星 cohort（含被 relay 走的 user）
-
-optsFullPowerSweepRelayOnly = optsFullPowerSweep;
-optsFullPowerSweepRelayOnly.enableMiddleHelperSwap = false;
-optsFullPowerSweepRelayOnly.excelPath = char(FullPowerSweepDataPathLocal(file_path, ...
-    numUsersPerSatSweep, 'RelayOnly'));
-RunFullPowerAggregateShutdownSweepExcel(root, optsFullPowerSweepRelayOnly);
-
-optsFullPowerSweepWithSwap = optsFullPowerSweep;
-optsFullPowerSweepWithSwap.enableMiddleHelperSwap = true;
-optsFullPowerSweepWithSwap.excelPath = char(FullPowerSweepDataPathLocal(file_path, ...
-    numUsersPerSatSweep, 'RelayWithMiddleSwap'));
-RunFullPowerAggregateShutdownSweepExcel(root, optsFullPowerSweepWithSwap);
-
-% 無功率上限：每束先 1.05 W，relay 前將 helper 全衛星可挪功率（含 swap 釋出）分到 relay 波束
-optsFullPowerSweepUnlimitedPool = optsFullPowerSweepWithSwap;
-optsFullPowerSweepUnlimitedPool.relayPowerShiftMode = "helperSatPoolUnlimited";
-optsFullPowerSweepUnlimitedPool.beamAllocatePower_W = 1.05;
-optsFullPowerSweepUnlimitedPool.enforceMaxBeamPowerCap = false;
-optsFullPowerSweepUnlimitedPool.excelPath = char(FullPowerSweepDataPathLocal(file_path, ...
-    numUsersPerSatSweep, 'RelayUnlimitedPool'));
-RunFullPowerAggregateShutdownSweepExcel(root, optsFullPowerSweepUnlimitedPool);
-
-% 畫圖：Relay only vs Relay + middle swap（讀 Matlab_data 內 U<numUsersPerSatPlot> 的 xlsx）
-optsSatVsLat = struct();
-optsSatVsLat.compareExcelPaths = [
-    string(FullPowerSweepDataPathLocal(file_path, numUsersPerSatPlot, 'RelayOnly'))
-    string(FullPowerSweepDataPathLocal(file_path, numUsersPerSatPlot, 'RelayWithMiddleSwap'))];
-optsSatVsLat.compareLabels = ["Relay only", "Relay + middle swap"];
-optsSatVsLat.satNames = "P03_S49";
-optsSatVsLat.gsLat_deg = optsFullPowerSweep.gsLat_deg;
-optsSatVsLat.latitudeWindowDeg = 20;
-optsSatVsLat.plotNoRelay = false;
-optsSatVsLat.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
-    numUsersPerSatPlot, 'P03S49_SatisfactionVsLat_RelayOnlyVsSwap', '.png'));
-optsSatVsLat.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
-    numUsersPerSatPlot, 'P03S49_SatisfactionVsLat_RelayOnlyVsSwap', '.xlsx'));
-PlotFullPowerSweepSatisfactionVsLatitude(root, optsSatVsLat);
-
-% 畫圖：無 middle swap vs unlimited pool（含 swap + 全衛星挪功率）
-optsSatVsLatUnlimited = struct();
-optsSatVsLatUnlimited.compareExcelPaths = [
-    string(FullPowerSweepDataPathLocal(file_path, numUsersPerSatPlot, 'RelayOnly'))
-    string(FullPowerSweepDataPathLocal(file_path, numUsersPerSatPlot, 'RelayUnlimitedPool'))];
-optsSatVsLatUnlimited.compareLabels = ["Relay only (no swap)", "Relay unlimited pool (+ swap)"];
-optsSatVsLatUnlimited.satNames = "P03_S49";
-optsSatVsLatUnlimited.gsLat_deg = optsFullPowerSweep.gsLat_deg;
-optsSatVsLatUnlimited.latitudeWindowDeg = 20;
-optsSatVsLatUnlimited.plotNoRelay = false;
-optsSatVsLatUnlimited.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
-    numUsersPerSatPlot, 'P03S49_SatisfactionVsLat_RelayOnlyVsUnlimitedPool', '.png'));
-optsSatVsLatUnlimited.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
-    numUsersPerSatPlot, 'P03S49_SatisfactionVsLat_RelayOnlyVsUnlimitedPool', '.xlsx'));
-PlotFullPowerSweepSatisfactionVsLatitude(root, optsSatVsLatUnlimited);
-
-%% ================== User field 平面圖 ==================
-
-PlotUserFieldPlanarMap(root, satUserTargets, "GS_01", optsBeamEpfd.areaSide_km, tEpochStr, "User_", optsBeamEpfd.excelPath);
-PlotUserFieldPlanarMapServedUsers(root, satUserTargets, "GS_01", optsBeamEpfd.areaSide_km, tEpochStr, "User_", optsBeamEpfd.excelPath);
-
-optsShutdownFrames = struct();
-optsShutdownFrames.showFigures = false;
-optsShutdownFrames.savePng = true;
-optsShutdownFrames.skipUnchanged = false;
-optsShutdownFrames.useSimulatedGs = true;
-% Plot GS (map marker / fixed axes); independent from sweep EPFD GS in optsFullPowerSweep
-optsShutdownFrames.plotGsLat_deg = 0;
-optsShutdownFrames.plotGsLon_deg = 122;
-optsShutdownFrames.fixedAxesOnGs = true;
-optsShutdownFrames.showMotionTrail = true;
-optsShutdownFrames.snapSatellitesToGroundTrack = true;
-optsShutdownFrames.plotEveryTimeSlot = true;
-optsShutdownFrames.tStartStr = optsFullPowerSweep.tStartStr;
-optsShutdownFrames.tEndStr = optsFullPowerSweep.tEndStr;
-optsShutdownFrames.stepSec = optsFullPowerSweep.stepSec;
-PlotFullPowerShutdownSweepFrames(root, satShutdownPlotTargets, "GS_01", optsBeamEpfd.areaSide_km, ...
-    optsFullPowerSweepWithSwap.excelPath, optsShutdownFrames);
+% --- 圖六：SAPR-R 在不同 EPFD 門檻（同圖三格式）；matrix 幾個 EPFD 就畫幾條線 ---
+optsFig6 = struct();
+optsFig6.recordSatellite = evalCriticalSat;
+optsFig6.relTimeWindowSec = [-60, 60];
+optsFig6.yAxisPercent = true;
+optsFig6.yLim = [0, 100];
+optsFig6.figureTitle = evalFigureTitles.fig6;
+optsFig6.titleFontSize = evalFigureTitleFontSize;
+optsFig6.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_SAPR-R_AvgUserSatisfaction_EpfdCompare', '.png'));
+optsFig6.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
+    numUsersPerSatPlot, 'P03S49_SAPR-R_AvgUserSatisfaction_EpfdCompare', '.xlsx'));
+nEpfdFig6 = 0;
+for iEpfdPlot = 1:numel(evalEpfdThr_dB_Matrix)
+    epfdThrPlot = evalEpfdThr_dB_Matrix(iEpfdPlot);
+    if abs(epfdThrPlot - evalEpfdThr_dB_Baseline) < 1e-9
+        pathEpfdThr = [];
+    else
+        pathEpfdThr = epfdThrPlot;
+    end
+    evalExcelPathsFig6 = resolveEvalExcelPathsLocal(file_path, numUsersPerSatPlot, pathEpfdThr);
+    if ~isfile(evalExcelPathsFig6.saprR)
+        warning('jacky:MissingFig6Excel', ...
+            'Skip fig.6 line EPFD=%.1f dB: missing %s. Re-run SAPR-R sweep for this threshold.', ...
+            epfdThrPlot, evalExcelPathsFig6.saprR);
+        continue;
+    end
+    nEpfdFig6 = nEpfdFig6 + 1;
+    optsFig6.methodDefs(nEpfdFig6) = struct( ...
+        'label', sprintf("EPFD %.1f dB", epfdThrPlot), ...
+        'excelPath', evalExcelPathsFig6.saprR, ...
+        'referenceExcelPath', evalExcelPathsFig6.saprR, ...
+        'sourceType', "fullpower");
+end
+if nEpfdFig6 > 0
+    optsFig6.referenceExcelPath = optsFig6.methodDefs(1).excelPath;
+    PlotFullPowerSweepSatisfactionVsTimeCompare(root, optsFig6);
+    fprintf('Fig6 done: %d EPFD curves -> %s\n', nEpfdFig6, optsFig6.figurePath);
+else
+    warning('jacky:MissingFig6Excel', 'Skip fig.6: no SAPR-R Excel for evalEpfdThr_dB_Matrix.');
+end
 
 
 

@@ -123,8 +123,15 @@ relayAssignmentRows = struct('time', {}, 'geo', {}, 'user_id', {}, 'home_sat', {
 relayHomeToHelperRows = struct('time', {}, 'geo', {}, 'home_sat', {}, 'relay_sat', {}, 'relay_user_count', {});
 swapServiceRows = struct('time', {}, 'geo', {}, 'user_id', {}, 'home_sat', {}, 'home_beam', {}, ...
     'service_sat', {}, 'service_beam', {}, 'user_satisfaction', {});
+perUserRows = struct('time', {}, 'geo', {}, 'user_id', {}, 'home_sat', {}, 'home_beam', {}, ...
+    'user_satisfaction', {}, 'relay_assigned', {}, 'swap_service', {});
 intraSatPowerShiftRows = struct('time', {}, 'geo', {}, 'helper_sat', {}, 'donor_beam', {}, ...
     'spare_W', {}, 'recipient_beam', {}, 'allocated_W', {}, 'recipient_final_power_W', {});
+slotEpfdRows = struct('time', {}, 'geo', {}, 'gs_epfd_before_dB', {}, 'gs_epfd_after_dB', {}, ...
+    'epfd_threshold_dB', {}, 'epfd_legal_before_relay', {}, 'shut_beam_count', {}, ...
+    'critical_satellite', {}, 'critical_subpoint_lat_deg', {}, 'critical_subpoint_lon_deg', {}, ...
+    'critical_distance_to_gs_deg', {}, 'seconds_from_critical', {}, 'critical_overhead_time', {}, ...
+    'seconds_from_worst_epfd_slot', {}, 'worst_epfd_slot_time', {}, 'critical_sat_closed_beam_count', {});
 
 for iSlot = 1:numSlots
     t = timeGrid(iSlot);
@@ -198,6 +205,39 @@ for iSlot = 1:numSlots
         slotAggAfter_dB = 10*log10(max(aggAfter_lin, 1e-300));
         slotShutCount = max(slotShutCount, shutCount);
         epfdLegalBeforeRelay = aggAfter_lin <= threshold_lin + linTol;
+
+        critSatName = string(opts.criticalSatelliteForEpfd);
+        iCrit = find(satList == critSatName, 1);
+        if isempty(iCrit)
+            critLat = NaN;
+            critLon = NaN;
+            critDist_deg = NaN;
+        else
+            critLat = satGeom(iCrit).subLat;
+            critLon = satGeom(iCrit).subLon;
+            critDist_deg = greatCircleDistanceDegLocal(opts.gsLat_deg, opts.gsLon_deg, critLat, critLon);
+        end
+        critShutCount = 0;
+        if strlength(critSatName) > 0
+            critMask = string(Tgeo.sat) == critSatName;
+            critShutCount = sum(Tgeo.shut_off(critMask) > 0);
+        end
+        slotEpfdRows(end+1).time = string(tStr); %#ok<AGROW>
+        slotEpfdRows(end).geo = geoNames(ig);
+        slotEpfdRows(end).gs_epfd_before_dB = slotAggBefore_dB;
+        slotEpfdRows(end).gs_epfd_after_dB = slotAggAfter_dB;
+        slotEpfdRows(end).epfd_threshold_dB = opts.params.EPFD_thr_dB;
+        slotEpfdRows(end).epfd_legal_before_relay = double(epfdLegalBeforeRelay);
+        slotEpfdRows(end).shut_beam_count = shutCount;
+        slotEpfdRows(end).critical_satellite = critSatName;
+        slotEpfdRows(end).critical_subpoint_lat_deg = critLat;
+        slotEpfdRows(end).critical_subpoint_lon_deg = critLon;
+        slotEpfdRows(end).critical_distance_to_gs_deg = critDist_deg;
+        slotEpfdRows(end).seconds_from_critical = NaN;
+        slotEpfdRows(end).critical_overhead_time = "";
+        slotEpfdRows(end).seconds_from_worst_epfd_slot = NaN;
+        slotEpfdRows(end).worst_epfd_slot_time = "";
+        slotEpfdRows(end).critical_sat_closed_beam_count = critShutCount;
 
         if slotViolated && any(Tgeo.shut_off > 0)
             involvedSats = unique(string(Tgeo.sat(Tgeo.shut_off > 0)), 'stable');
@@ -326,6 +366,22 @@ for iSlot = 1:numSlots
                     relayHomeToHelperRows(end).relay_user_count = nUnserved;
                 end
             end
+            for iu = 1:NuserSlot
+                iHomeSat = userSatIdx(iu);
+                if iHomeSat >= 1 && iHomeSat <= numel(satList)
+                    homeSatStr = string(satList(iHomeSat));
+                else
+                    homeSatStr = "";
+                end
+                perUserRows(end+1).time = string(tStr); %#ok<AGROW>
+                perUserRows(end).geo = geoNames(ig);
+                perUserRows(end).user_id = userIdStringLocal(userNames, iu);
+                perUserRows(end).home_sat = homeSatStr;
+                perUserRows(end).home_beam = userBeamIdx(iu);
+                perUserRows(end).user_satisfaction = satisfactionRelay(iu);
+                perUserRows(end).relay_assigned = double(relayAssignedMask(iu));
+                perUserRows(end).swap_service = double(swapServiceMask(iu));
+            end
         end
     end
 
@@ -355,6 +411,7 @@ for iSlot = 1:numSlots
     end
 end
 
+TslotEpfd = finalizeSlotEpfdTableLocal(slotEpfdRows);
 TbeamContributionLog = struct2table(beamRows);
 TbackoffLog = struct2table(backoffRows);
 TavgUserSatisfaction = struct2table(satisfactionRows);
@@ -389,6 +446,10 @@ if exist(excelPath, 'file')
 end
 writetable(TbeamContributionLog, excelPath, 'Sheet', 'ViolatingSat_16BeamState');
 writetable(TbackoffLog, excelPath, 'Sheet', 'Backoff_Log');
+if ~isempty(TslotEpfd)
+    TslotEpfd = sortrows(TslotEpfd, {'geo','time'}, {'ascend','ascend'});
+    writetable(TslotEpfd, excelPath, 'Sheet', 'Slot_EPFD');
+end
 if recordSatisfaction && ~isempty(TavgUserSatisfaction)
     writetable(TavgUserSatisfaction, excelPath, 'Sheet', 'AvgUserSatisfaction');
 end
@@ -397,6 +458,11 @@ if recordSatisfaction && ~isempty(TrelayAssignment)
 end
 if recordSatisfaction && ~isempty(TrelayHomeToHelper)
     writetable(TrelayHomeToHelper, excelPath, 'Sheet', 'Relay_HomeToHelper');
+end
+TperUser = struct2table(perUserRows);
+if recordSatisfaction && ~isempty(TperUser)
+    TperUser = sortrows(TperUser, {'time','geo','home_sat','user_id'}, {'ascend','ascend','ascend','ascend'});
+    writetable(TperUser, excelPath, 'Sheet', 'PerUser');
 end
 TswapService = struct2table(swapServiceRows);
 TintraSatPowerShift = struct2table(intraSatPowerShiftRows);
@@ -510,6 +576,10 @@ if opts.enforceMaxBeamPowerCap
 else
     opts.maxBeamPower_W = inf;
 end
+if ~isfield(opts, 'criticalSatelliteForEpfd') || strlength(string(opts.criticalSatelliteForEpfd)) == 0
+    opts.criticalSatelliteForEpfd = "P03_S49";
+end
+opts.criticalSatelliteForEpfd = string(opts.criticalSatelliteForEpfd);
 if ~isfield(opts, 'satisfactionRecordSatList')
     opts.satisfactionRecordSatList = string.empty(0, 1);
 end
@@ -1069,15 +1139,72 @@ for k = 1:numel(distressedList)
 end
 end
 
+function Tslot = finalizeSlotEpfdTableLocal(slotEpfdRows)
+if isempty(slotEpfdRows)
+    Tslot = table();
+    return;
+end
+Tslot = struct2table(slotEpfdRows);
+if ~ismember('seconds_from_critical', Tslot.Properties.VariableNames)
+    Tslot.seconds_from_critical = nan(height(Tslot), 1);
+end
+geoList = unique(string(Tslot.geo), 'stable');
+for ig = 1:numel(geoList)
+    gMask = string(Tslot.geo) == geoList(ig);
+    distCol = double(Tslot.critical_distance_to_gs_deg(gMask));
+    times = string(Tslot.time(gMask));
+    if all(~isfinite(distCol))
+        continue;
+    end
+    [~, iLocal] = min(distCol);
+    idxAll = find(gMask);
+    t0 = datenum(char(times(iLocal)), 'dd mmm yyyy HH:MM:SS'); %#ok<DATNM>
+    tOverStr = times(iLocal);
+    for k = 1:numel(idxAll)
+        tk = datenum(char(times(k)), 'dd mmm yyyy HH:MM:SS'); %#ok<DATNM>
+        Tslot.seconds_from_critical(idxAll(k)) = (tk - t0) * 86400;
+    end
+    Tslot.critical_overhead_time(idxAll) = repmat(string(tOverStr), numel(idxAll), 1);
+end
+
+if ~ismember('seconds_from_worst_epfd_slot', Tslot.Properties.VariableNames)
+    Tslot.seconds_from_worst_epfd_slot = nan(height(Tslot), 1);
+end
+if ~ismember('worst_epfd_slot_time', Tslot.Properties.VariableNames)
+    Tslot.worst_epfd_slot_time = strings(height(Tslot), 1);
+end
+% t=0 for plots: all beams on (pre-backoff) aggregate EPFD is highest
+for ig = 1:numel(geoList)
+    gMask = string(Tslot.geo) == geoList(ig);
+    epfdCol = double(Tslot.gs_epfd_before_dB(gMask));
+    times = string(Tslot.time(gMask));
+    if all(~isfinite(epfdCol))
+        continue;
+    end
+    [~, iWorst] = max(epfdCol);
+    idxAll = find(gMask);
+    t0 = datenum(char(times(iWorst)), 'dd mmm yyyy HH:MM:SS'); %#ok<DATNM>
+    tWorstStr = times(iWorst);
+    for k = 1:numel(idxAll)
+        tk = datenum(char(times(k)), 'dd mmm yyyy HH:MM:SS'); %#ok<DATNM>
+        Tslot.seconds_from_worst_epfd_slot(idxAll(k)) = (tk - t0) * 86400;
+    end
+    Tslot.worst_epfd_slot_time(idxAll) = repmat(string(tWorstStr), numel(idxAll), 1);
+end
+end
+
 function tf = isRelayPowerShiftUnlimitedLocal(opts)
 tf = isfield(opts, 'relayPowerShiftMode') && string(opts.relayPowerShiftMode) == "helperSatPoolUnlimited";
 end
 
 function p_W = beamPowerBudgetForSwapLocal(opts)
-if isRelayPowerShiftUnlimitedLocal(opts)
+% Safe-beam (middle open beam) swap feasibility uses nominal on-air power only.
+if isfield(opts, 'fullBeamPower_W') && isfinite(opts.fullBeamPower_W)
+    p_W = double(opts.fullBeamPower_W);
+elseif isfield(opts, 'beamAllocatePower_W') && isfinite(opts.beamAllocatePower_W)
     p_W = double(opts.beamAllocatePower_W);
 else
-    p_W = double(opts.maxBeamPower_W);
+    p_W = 1.05;
 end
 end
 

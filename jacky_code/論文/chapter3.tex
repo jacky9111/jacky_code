@@ -1,288 +1,37 @@
-\input{chapter3_style}
+% Chapter 3 — compile with: pdflatex chapter3.tex
+\documentclass[10pt,journal,twocolumn]{IEEEtran}
 
-\section{System Model and Problem Formulation}
+\usepackage[T1]{fontenc}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage[noEnd=false,indLines=true]{algpseudocodex}
+\usepackage{microtype}
+\usepackage{hyperref}
 
-\subsection{System Model}
+\graphicspath{{figures/}}
 
-\mdsubsubsection[sssec:network]{Network Scenario}
-本研究考慮一個 OneWeb-like 的 LEO 衛星通訊系統，並聚焦於 NGSO--GSO coexistence 情境下之 downlink interference management 問題。系統中每顆 LEO 衛星配置 $16$ 個 spot beams~\cite{oneweb2016fcc}，並於每一個 time slot 中服務其覆蓋範圍內的地面 users。
+\hypersetup{
+  colorlinks=true,
+  linkcolor=red,
+  citecolor=green,
+  urlcolor=blue,
+  pdfborder={0 0 0}
+}
 
-設 $\mathcal{S}(t)$ 為 time slot $t$ 中可見之 LEO 衛星集合，$\mathcal{B}_s$ 為衛星 $s$ 的 beam 集合。本文假設每顆 LEO 衛星皆具有相同數量之 beams，因此有
-\begin{equation*}
-|\mathcal{B}_s|=16,\qquad \forall s\in\mathcal{S}(t).
-\end{equation*}
-每顆衛星之 $16$ 個 spot beams 採用固定 beam layout，並沿衛星行進方向呈南北排列。對於 satellite $s$ 的 beam $b$，其於 time slot $t$ 的地面 footprint 記為
-\begin{equation*}
-\mathcal{F}_{s,b}(t).
-\end{equation*}
-若 user $u$ 位於 $\mathcal{F}_{s,b}(t)$ 內，則表示該 user 可被 satellite $s$ 的 beam $b$ 覆蓋，並可作為後續 user association 的候選 serving beam。
+\floatstyle{ruled}
+\restylefloat{algorithm}
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{Output:}}
 
-此外，系統中設有一個受保護之 GSO ground station，記為 $g$。當某顆 LEO 衛星接近該 GS 正上方，或與 GSO direction 呈現接近 inline 的幾何關係時，其下行傳輸可能對 protected GS 造成較高 aggregate EPFD。為描述此情境，本文將在 time slot $t$ 中對 protected GS 造成主要 EPFD 風險的 LEO 衛星定義為 critical satellite，記為
-\begin{equation*}
-s^{\mathrm{c}}(t).
-\end{equation*}
-同時，本文考慮 critical satellite 於同軌道方向上的北側與南側鄰近衛星作為後續服務轉移與 relay 的候選 helper satellites，分別記為
-\begin{equation*}
-s^{\mathrm{N}}(t),\quad s^{\mathrm{S}}(t).
-\end{equation*}
-其中 $s^{\mathrm{N}}(t)$ 表示 north helper satellite，$s^{\mathrm{S}}(t)$ 表示 south helper satellite，如圖~\ref{fig:ch3_network_scenario}所示。由於本文考慮之 LEO constellation 具有規律性的 Walker-star orbital structure，critical satellite 與其 north/south helper satellites 之間的相對位置與 beam coverage overlap 具有可預測性。此特性將於後續方法章節中作為 beam-level user reassociation 與 relay 設計之基礎。圖~\ref{fig:ch3_oneweb_footprint} 以 OneWeb Ku-band 16-beam payload 為例，示意各 beam 在 Alpha--Epsilon 座標下之地面 footprint 與沿 along-track 方向之排列方式~\cite{oneweb2016fcc}。
+\pagestyle{plain}
 
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=0.92\columnwidth]{oneweb_ku_16beam_footprint}
-  \caption{OneWeb Ku-band 16-beam payload 之地面 footprint 示意（Alpha--Epsilon 座標）。16 個 spot beams 沿衛星 along-track（南北）方向排列。}
-  \label{fig:ch3_oneweb_footprint}
-\end{figure}
+\begin{document}
 
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=0.92\columnwidth]{ch3_critical_helper_geometry}
-  \caption{受保護 GSO 地面站 $g$、critical satellite $s^{\mathrm{c}}(t)$ 與 north/south helper satellites $s^{\mathrm{N}}(t)$、$s^{\mathrm{S}}(t)$ 之網路情境示意。}
-  \label{fig:ch3_network_scenario}
-\end{figure}
+\setcounter{section}{2}
+\input{chapter3_content}
 
-\mdsubsubsection[sssec:association]{User Association and Service Model}
-設 $\mathcal{U}(t)$ 為 time slot $t$ 中位於系統服務範圍內的 user 集合。本文假設每位 user 在同一個 time slot 中最多只能由一顆 LEO 衛星的一個 beam 服務。為描述 user 與 serving beam 之間的關聯，定義 binary association variable 如下：
-\begin{equation*}
-x_{u,s,b}(t)=
-\begin{cases}
-1, & \text{if user $u$ is served by beam $b$ of satellite $s$,}\\
-0, & \text{otherwise,}
-\end{cases}
-\end{equation*}
-其中 $u\in\mathcal{U}(t)$、$s\in\mathcal{S}(t)$，且 $b\in\mathcal{B}_s$。若 $x_{u,s,b}(t)=1$，表示 user $u$ 在 time slot $t$ 中由 satellite $s$ 的 beam $b$ 服務；反之，若 $x_{u,s,b}(t)=0$，則表示該 user 並未由該 satellite--beam pair 服務。
+\input{references_at_end}
 
-由 satellite $s$ 的 beam $b$ 所服務之 user 集合定義為
-\begin{equation*}
-\mathcal{U}_{s,b}(t)=\{u\in\mathcal{U}(t)\mid x_{u,s,b}(t)=1\}.
-\end{equation*}
-因此，beam $b$ 上的 served user 數量可表示為
-\begin{equation}
-N_{s,b}(t)=\sum_{u\in\mathcal{U}(t)} x_{u,s,b}(t).
-\label{eq:ch3_beam_load}
-\end{equation}
-由於本文假設每位 user 僅能由單一 serving beam 提供服務，因此 user 所獲得的 downlink rate 僅來自其所關聯的 beam，而不會同時由多個 beams 共同提供容量。換言之，不同 beams 的 capacity 不會被同一 user 共同使用；user 的 service quality 完全取決於其 serving beam 的 link condition、beam power、channel assignment，以及該 beam 內同時服務的 user 數量。
-
-此外，若 user $u$ 不位於 beam $s,b$ 的 footprint $\mathcal{F}_{s,b}(t)$ 內，則該 beam 不會被視為 user $u$ 的可行 serving beam。也就是說，本文僅在可覆蓋 user 的 satellite--beam pairs 中進行 association decision。此設定可確保後續 user association、reassociation 與 relay decision 均符合實際 beam coverage 條件。
-
-\mdsubsubsection[sssec:power]{Beam Power Model}
-本文考慮一個 baseline-power beam operation model。在一般情境下，亦即 LEO 衛星遠離受保護 GS 且無明顯 EPFD violation 風險時，每顆 satellite 的 active beams 皆配置相同 baseline power。對於 satellite $s$ 的 beam $b$，其 transmit power 表示為
-\begin{equation*}
-P_{s,b}(t).
-\end{equation*}
-在 normal operation 下，beam power 設定為
-\begin{equation*}
-P_{s,b}(t)=P^{\mathrm{base}},\qquad \forall s\in\mathcal{S}(t),\ \forall b\in\mathcal{B}_s.
-\end{equation*}
-其中 $P^{\mathrm{base}}$ 為一般情境下每個 beam 所配置之 baseline power。此 baseline power 的設計目的，是在不進行 per-time-slot continuous power control 的情況下，提供一個可滿足一般 user demand 的固定功率配置。由於 LEO constellation 中 beams 與 users 數量眾多，若於每個 time slot 重新求解完整 power control problem，將造成較高計算複雜度，且在實際系統中不易即時部署與實現。因此，本文採用 baseline-power operation 作為 normal operation 的初始功率配置，並將後續功率調整集中於 EPFD 風險期間的 beam shutdown 與 helper beam power boosting。
-
-每個 beam 皆具有其 maximum transmit power，記為
-\begin{equation*}
-P_{s,b}^{\max}.
-\end{equation*}
-因此，任意 time slot 中的 beam transmit power 必須滿足
-\begin{equation}
-0\le P_{s,b}(t)\le P_{s,b}^{\max},\qquad \forall s\in\mathcal{S}(t),\ \forall b\in\mathcal{B}_s.
-\label{eq:ch3_beam_power_cap}
-\end{equation}
-此外，每顆 satellite 亦具有 total transmit power limit，記為 $P_s^{\max}$。因此，satellite $s$ 上所有 beams 的總發射功率需滿足
-\begin{equation}
-\sum_{b\in\mathcal{B}_s} P_{s,b}(t)\le P_s^{\max},\qquad \forall s\in\mathcal{S}(t).
-\label{eq:ch3_sat_power_budget}
-\end{equation}
-
-當 critical satellite $s^{\mathrm{c}}(t)$ 接近 protected GS 並導致 aggregate EPFD violation risk 時，部分 high-risk beams 可能需要被 shutdown。令 $\mathcal{B}_{\mathrm{c}}^{\mathrm{off}}(t)$ 表示 critical satellite 上被關閉的 beam 集合，則這些 beams 的 transmit power 設定為
-\begin{equation*}
-P_{s^{\mathrm{c}},b}(t)=0,\qquad \forall b\in\mathcal{B}_{\mathrm{c}}^{\mathrm{off}}(t).
-\end{equation*}
-相對地，critical satellite 上未被關閉的 beams 稱為 safe beams，記為 $\mathcal{B}_{\mathrm{c}}^{\mathrm{safe}}(t)$。這些 safe beams 維持 baseline power：
-\begin{equation*}
-P_{s^{\mathrm{c}},b}(t)=P^{\mathrm{base}},\qquad \forall b\in\mathcal{B}_{\mathrm{c}}^{\mathrm{safe}}(t).
-\end{equation*}
-其中
-\begin{equation*}
-\mathcal{B}_{\mathrm{c}}^{\mathrm{safe}}(t)=\mathcal{B}_{s^{\mathrm{c}}}\setminus\mathcal{B}_{\mathrm{c}}^{\mathrm{off}}(t).
-\end{equation*}
-因此，critical satellite 的 beam power 可表示為
-\begin{equation*}
-P_{s^{\mathrm{c}},b}(t)=
-\begin{cases}
-0, & b\in\mathcal{B}_{\mathrm{c}}^{\mathrm{off}}(t),\\
-P^{\mathrm{base}}, & b\in\mathcal{B}_{\mathrm{c}}^{\mathrm{safe}}(t).
-\end{cases}
-\end{equation*}
-對於 helper satellites，其 beams 在一般情境下同樣使用 baseline power。當 helper satellite 需要接手 critical closed beams 上的 users 時，負責 relay 的 helper beams 可由 baseline power 提升至其 beam-level maximum power：
-\begin{equation*}
-P_{s^{\mathrm{h}},b}(t)\le P_{s^{\mathrm{h}},b}^{\max},\qquad s^{\mathrm{h}}\in\{s^{\mathrm{N}}(t),s^{\mathrm{S}}(t)\}.
-\end{equation*}
-然而，helper satellite 上所有 beams 的總功率仍必須滿足 satellite total power limit。因此，即使某些 helper beams 被提升至 beam maximum power，整顆 satellite 的功率配置仍需滿足式~\eqref{eq:ch3_sat_power_budget}。
-
-在本文後續方法中，critical safe beams 可用於接手部分 helper users，使 helper satellite 釋放功率資源。釋放出的功率可回到 helper satellite 的 available power pool，並用於提升負責 relay 的 helper beams。需要注意的是，雖然 transmit power 可在同一顆 helper satellite 的 beams 間重新分配，每位 user 仍僅能由單一 serving beam 服務，且 user 所獲得的 service rate 僅來自其 serving beam 的 capacity。
-
-\mdsubsubsection[sssec:sinr]{SINR Model}
-在本研究中，user 的接收品質由 serving beam 所提供之 desired signal power、co-channel interference，以及 receiver noise 共同決定。本文採用 OneWeb-like multi-channel frequency assignment，設 $\mathcal{K}$ 為可用 channel 集合，且
-\begin{equation*}
-|\mathcal{K}|=8.
-\end{equation*}
-若 satellite $s$ 的 beam $b$ 使用 channel $k_{s,b}\in\mathcal{K}$，則 user 僅會受到與其 serving beam 使用相同 channel 之 beams 所造成的 co-channel interference。
-
-假設 user $u$ 由 satellite $s$ 的 beam $b$ 服務，則 user $u$ 的接收 SINR 可表示為
-\begin{equation*}
-\mathrm{SINR}_u(t)=\frac{S_u(t)}{I_u^{\mathrm{intra}}(t)+I_u^{\mathrm{inter}}(t)+N_u(t)}.
-\end{equation*}
-其中 $S_u(t)$ 為 desired signal power，$I_u^{\mathrm{intra}}(t)$ 與 $I_u^{\mathrm{inter}}(t)$ 分別表示 intra-satellite co-channel interference 與 inter-satellite co-channel interference，$N_u(t)$ 為 receiver noise power。
-
-\mdparagraph{Desired Signal Power}
-對於由 satellite $s$ 的 beam $b$ 所服務之 user $u$，其 desired signal power 可表示為
-\begin{equation*}
-S_u(t)=x_{u,s,b}(t)\,\frac{P_{s,b}(t)\,G^{\mathrm{tx}}_{s,b\to u}(t)\,G^{\mathrm{rx}}_u}{L_{s,u}(t)}.
-\end{equation*}
-其中 $P_{s,b}(t)$ 為 beam $b$ 的 transmit power，$G^{\mathrm{tx}}_{s,b\to u}(t)$ 為 beam $b$ 朝 user $u$ 方向之 transmit antenna gain，$G^{\mathrm{rx}}_u$ 為 user terminal receive antenna gain，$L_{s,u}(t)$ 為 satellite $s$ 與 user $u$ 之間的 total propagation loss。
-
-本文將 total propagation loss 表示為
-\begin{equation*}
-L_{s,u}(t)=L_{s,u}^{\mathrm{fs}}(t)\,L_{s,u}^{\mathrm{gas}}(t),
-\end{equation*}
-其中 $L_{s,u}^{\mathrm{fs}}(t)$ 為 free-space path loss，$L_{s,u}^{\mathrm{gas}}(t)$ 為 atmospheric gas loss。free-space path loss 可表示為
-\begin{equation*}
-L_{s,u}^{\mathrm{fs}}(t)=\left(\frac{4\pi d_{s,u}(t)}{\lambda}\right)^2,
-\end{equation*}
-其中 $d_{s,u}(t)$ 為 satellite $s$ 與 user $u$ 之間的 distance，$\lambda$ 為 carrier wavelength。
-
-\mdparagraph{Intra-Satellite Interference}
-由於同一顆 satellite 上的不同 beams 可能重複使用相同 channel，因此 user 可能受到 serving satellite 上其他 co-channel beams 的干擾。本文將此類干擾定義為 intra-satellite interference。
-
-若 user $u$ 由 satellite $s$ 的 beam $b$ 服務，則 intra-satellite interference 可表示為
-\begin{equation*}
-I_u^{\mathrm{intra}}(t)=\sum_{\substack{b'\in\mathcal{B}_s\\ b'\neq b}}
-\mathbf{1}\!\bigl(k_{s,b'}=k_{s,b}\bigr)\,
-\frac{P_{s,b'}(t)\,G^{\mathrm{tx}}_{s,b'\to u}(t)\,G^{\mathrm{rx}}_u}{L_{s,u}(t)},
-\end{equation*}
-其中 $\mathbf{1}(k_{s,b'}=k_{s,b})$ 為 channel indicator function。若 beam $b'$ 與 serving beam $b$ 使用相同 channel，則其值為 $1$；否則為 $0$。
-
-\mdparagraph{Inter-Satellite Interference}
-除同一顆 satellite 上其他 co-channel beams 造成的 interference 外，user 亦可能受到其他可視 LEO satellites 上 co-channel beams 的干擾。本文將此類干擾定義為 inter-satellite interference。
-
-若 user $u$ 由 satellite $s$ 的 beam $b$ 服務，則 inter-satellite interference 可表示為
-\begin{equation*}
-I_u^{\mathrm{inter}}(t)=\sum_{\substack{s'\in\mathcal{S}(t)\\ s'\neq s}}
-\sum_{b'\in\mathcal{B}_{s'}}
-\mathbf{1}\!\bigl(k_{s',b'}=k_{s,b}\bigr)\,
-\frac{P_{s',b'}(t)\,G^{\mathrm{tx}}_{s',b'\to u}(t)\,G^{\mathrm{rx}}_u}{L_{s',u}(t)},
-\end{equation*}
-其中 $G^{\mathrm{tx}}_{s',b'\to u}(t)$ 為 interfering beam $s',b'$ 朝 user $u$ 方向之 transmit antenna gain，$L_{s',u}(t)$ 為 satellite $s'$ 與 user $u$ 之間的 total propagation loss。
-
-\mdparagraph{SINR Expression}
-綜合上述 desired signal、intra-satellite interference、inter-satellite interference 與 receiver noise，user $u$ 的接收 SINR 為
-\begin{equation*}
-\mathrm{SINR}_u(t)=\frac{S_u(t)}{I_u^{\mathrm{intra}}(t)+I_u^{\mathrm{inter}}(t)+N_u(t)}.
-\end{equation*}
-上式顯示，在 OneWeb-like 8-channel 架構下，user 的接收品質不僅取決於 serving beam 的 transmit power、antenna gain 與 path loss，亦會受到使用相同 channel 的 intra-satellite 與 inter-satellite beams 所影響。因此，後續 beam shutdown、user reassociation 與 helper relay decision 皆可能改變 user-side SINR，進而影響 user satisfaction。
-
-\mdsubsubsection[sssec:capacity]{Capacity and User Satisfaction Model}
-在求得 user $u$ 的接收 SINR 後，可依 Shannon formula 計算其 instantaneous capacity。令 $B_u$ 表示 user $u$ 所使用之 effective bandwidth，則 user $u$ 在 time slot $t$ 的 instantaneous capacity 可表示為
-\begin{equation*}
-C_u(t)=B_u\log_2\!\bigl(1+\mathrm{SINR}_u(t)\bigr).
-\end{equation*}
-由於同一 beam 內可能同時服務多位 users，本文以 TDMA model 描述 beam 內資源共享。若 user $u$ 由 satellite $s$ 的 beam $b$ 服務，則該 beam 上的 served user 數量為 $N_{s,b}(t)$。因此，user $u$ 的 actual service rate 可表示為
-\begin{equation}
-R_u(t)=\frac{C_u(t)}{N_{s,b}(t)}.
-\label{eq:ch3_service_rate}
-\end{equation}
-其中 $N_{s,b}(t)$ 已於式~\eqref{eq:ch3_beam_load} 定義，表示 satellite $s$ 的 beam $b$ 於 time slot $t$ 中所服務之 user 數量。式~\eqref{eq:ch3_service_rate} 表示同一 beam 內的 users 透過 TDMA 共享該 beam 的 downlink resource。由於本文假設每位 user 僅由單一 beam 服務，因此 user 的 actual service rate 僅由其 serving beam 決定，不會與其他 beams 的 capacity 共同分配。
-
-令 $D_u(t)$ 表示 user $u$ 在 time slot $t$ 的 demand rate。為評估 user 實際服務品質是否滿足其需求，本文定義 user satisfaction 如下：
-\begin{equation}
-\mathrm{sat}_u(t)=\min\!\left(\frac{R_u(t)}{D_u(t)},\,1\right).
-\label{eq:ch3_satisfaction}
-\end{equation}
-其中 $\mathrm{sat}_u(t)\in[0,1]$。當 $\mathrm{sat}_u(t)=1$ 時，表示 user $u$ 的 demand 已被完全滿足；當 $0<\mathrm{sat}_u(t)<1$ 時，表示 user $u$ 僅獲得部分服務；而當 $\mathrm{sat}_u(t)=0$ 時，表示 user $u$ 在該 time slot 中未獲得有效服務。
-
-此 satisfaction metric 將作為本文 problem formulation 與後續 performance evaluation 的主要指標。本文之目標是在滿足 EPFD regulatory constraint 與功率限制的前提下，盡可能提升系統中所有 users 的 total satisfaction。
-
-\mdsubsubsection[sssec:epfd]{Beam-Level EPFD Model}
-在 NGSO--GSO coexistence 情境下，LEO satellite system 除需維持 user-side link quality 外，亦必須確保其對受保護 GSO ground station 所造成之 aggregate EPFD 不超過 regulatory limit~\cite{itur_rr2020,itur_s1503_2018}。由於本文考慮之 LEO satellite 配置 $16$ 個 spot beams，且各 beam 對 protected GS 的 pointing direction、off-axis angle 與 transmit power 皆可能不同，因此本文採用 beam-level EPFD calculation，先計算各 beam 之 EPFD contribution，再於線性域加總。
-
-考慮 satellite $s$ 的 beam $b$，其對 protected GS $g$ 的 EPFD contribution 定義為
-\begin{equation*}
-\mathrm{EPFD}_{s,b}(t)=
-\frac{P_{s,b}(t)\,G^{\mathrm{tx}}_{s,b\to g}(t)}
-{4\pi d_{s,g}^{2}(t)}
-\cdot
-\frac{G_g^{\mathrm{rx}}(\theta_{g\to s}(t))}
-{G_{g,\max}^{\mathrm{rx}}}
-\cdot
-\frac{1}{B_{\mathrm{ref}}},
-\end{equation*}
-其中 $P_{s,b}(t)$ 為 beam transmit power，$G^{\mathrm{tx}}_{s,b\to g}(t)$ 為 beam 朝 protected GS 方向之 transmit antenna gain，$d_{s,g}(t)$ 為 satellite $s$ 與 GS $g$ 之間的距離，$G_g^{\mathrm{rx}}(\theta_{g\to s}(t))$ 為 GS antenna 朝 satellite $s$ 方向之 receive gain，$G_{g,\max}^{\mathrm{rx}}$ 為 GS maximum receive gain，$\theta_{g\to s}(t)$ 為 GS 至 satellite $s$ 方向的 off-axis angle，$B_{\mathrm{ref}}$ 為 EPFD evaluation 所採用之 reference bandwidth~\cite{itur_s1528_2001,itur_s1428_2001}。
-
-beam 朝 protected GS 方向之 transmit antenna gain 可表示為 off-axis angle 的函數：
-\begin{equation*}
-G^{\mathrm{tx}}_{s,b\to g}(t)=G^{\mathrm{tx}}_{s,b}\!\bigl(\phi_{s,b\to g}(t)\bigr),
-\end{equation*}
-其中 $\phi_{s,b\to g}(t)$ 為 protected GS 相對於 beam $b$ boresight 的 off-axis angle。由於同一 satellite 上的 $16$ 個 beams 具有不同 pointing directions，各 beam 對 GS 的 off-axis angle 亦不同，因此其 EPFD contribution 需分別計算。
-
-Satellite $s$ 對 protected GS 的 total EPFD contribution 為其所有 beams 之 EPFD contribution 於線性域加總：
-\begin{equation*}
-\mathrm{EPFD}_{s}^{\mathrm{sat}}(t)=\sum_{b\in\mathcal{B}_s} \mathrm{EPFD}_{s,b}(t).
-\end{equation*}
-在 time slot $t$ 中，所有 visible LEO satellites 對 protected GS 所造成之 aggregate EPFD 為
-\begin{equation*}
-\mathrm{EPFD}_{\mathrm{agg}}(t)=\sum_{s\in\mathcal{S}(t)} \mathrm{EPFD}_{s}^{\mathrm{sat}}(t).
-\end{equation*}
-等價地，可直接表示為
-\begin{equation*}
-\mathrm{EPFD}_{\mathrm{agg}}(t)=\sum_{s\in\mathcal{S}(t)}\sum_{b\in\mathcal{B}_s} \mathrm{EPFD}_{s,b}(t).
-\end{equation*}
-為確保 NGSO--GSO coexistence 之法規合規性，系統必須滿足
-\begin{equation}
-\mathrm{EPFD}_{\mathrm{agg}}(t)\le \mathrm{EPFD}_{\mathrm{lim}},
-\label{eq:ch3_epfd_limit}
-\end{equation}
-其中 $\mathrm{EPFD}_{\mathrm{lim}}$ 為對應 reference bandwidth 與受保護 GS 條件下之 EPFD regulatory limit。若某一 time slot 中 $\mathrm{EPFD}_{\mathrm{agg}}(t)>\mathrm{EPFD}_{\mathrm{lim}}$，則表示目前 beam power configuration 對 protected GS 造成過高干擾，後續需透過 beam shutdown 或 user reassociation 等方法使系統重新滿足 EPFD constraint。
-
-\subsection{Problem Formulation}
-
-根據前述系統模型，本文之目標是在滿足 user association、beam power、satellite total power 與 EPFD regulatory constraint 的前提下，最大化系統中所有 users 的 total satisfaction。聯合最佳化問題可表示如下。
-
-\mdparagraph{決策變數}
-最佳化變數為 user--beam association 指標 $\mathbf{x}(t)=\{x_{u,s,b}(t)\}$ 與 beam transmit power 集合 $\mathbf{P}(t)=\{P_{s,b}(t)\}$。
-
-\mdparagraph{目標函數}
-\begin{equation}
-\max_{\mathbf{x}(t),\mathbf{P}(t)}
-\sum_{u\in\mathcal{U}(t)} \mathrm{sat}_u(t).
-\label{eq:ch3_prob_obj}
-\end{equation}
-
-\mdparagraph{限制條件}
-\begin{equation}
-\sum_{s\in\mathcal{S}(t)}\sum_{b\in\mathcal{B}_s} x_{u,s,b}(t)\le 1,
-\qquad \forall u\in\mathcal{U}(t),
-\label{eq:ch3_prob_assoc}
-\end{equation}
-\begin{equation*}
-0\le P_{s,b}(t)\le P_{s,b}^{\max},
-\qquad \forall s\in\mathcal{S}(t),\ \forall b\in\mathcal{B}_s,
-\end{equation*}
-\begin{equation*}
-\sum_{b\in\mathcal{B}_s} P_{s,b}(t)\le P_s^{\max},
-\qquad \forall s\in\mathcal{S}(t),
-\end{equation*}
-\begin{equation*}
-\mathrm{EPFD}_{\mathrm{agg}}(t)\le \mathrm{EPFD}_{\mathrm{lim}}.
-\end{equation*}
-
-限制式~\eqref{eq:ch3_prob_assoc} 限制每位 user 於每個 time slot 中僅能被一個 satellite--beam pair 服務。因此，user 所獲得的 service rate 僅來自其 serving beam，而不會同時由多個 beams 提供 capacity。
-
-限制式~\eqref{eq:ch3_beam_power_cap} 表示每個 beam 的 transmit power 不得超過其 beam-level maximum power。當 beam 被 shutdown 時，其 transmit power 可為 $0$；而當 helper beam 參與 relay 時，其 power 可提升，但仍不可超過 $P_{s,b}^{\max}$。
-
-限制式~\eqref{eq:ch3_sat_power_budget} 表示每顆 satellite 上所有 beams 的總發射功率不得超過 satellite total power limit $P_s^{\max}$。因此，即使部分 helper beams 為了支援 relay 而提升至較高 power，整顆 satellite 的總功率仍需受到 $P_s^{\max}$ 限制。
-
-限制式~\eqref{eq:ch3_epfd_limit} 確保所有 visible LEO satellites 對 protected GS 所造成之 aggregate EPFD 不超過 regulatory limit，以維持 NGSO--GSO coexistence 之法規合規性。
-
-目標函數~\eqref{eq:ch3_prob_obj} 用以在 EPFD 保護限制與功率預算約束下，最大化可視 LEO 衛星系統中所有 users 的整體 satisfaction。由於 $\mathrm{sat}_u(t)$ 已於式~\eqref{eq:ch3_satisfaction} 定義，因此該 objective 可反映系統在 time slot $t$ 中的整體服務品質。
-
-由於 user association decision 會影響 beam 內 TDMA sharing、user SINR、actual service rate 與 satisfaction，而 beam power configuration 亦會同時影響 user-side link quality 與 GS-side aggregate EPFD，因此上述問題具有高度耦合性。特別是在 critical satellite 接近 protected GS 時，beam shutdown 雖可降低 EPFD，但也會造成 closed beams 上 users 的 satisfaction degradation。若直接將這些 users reassociate 至 helper satellites，則可能增加 helper beams 的負載並影響其原本 users 的服務品質。
-
-因此，本文不直接求解上述 mixed-integer non-linear optimization problem 的全域最佳解，而是在下一章提出一套分階段 heuristic framework。該方法在滿足 EPFD constraint 的前提下，透過 safe-beam assisted power release 與 beam-pair local relay，逐步提升 critical period 中的整體 user satisfaction。
+\end{document}

@@ -210,56 +210,6 @@ BEGIN SceneWindow
 
         BEGIN Globe
             AA		 Yes
-            BeginCentralBody "Earth"
-                Show		 Yes
-                Textured		 Yes
-                AltOffset		 0
-                Color		 #0000ff
-                SpecularColor		 #545454
-                Shininess		 40
-                ShowWater		 Yes
-                ShowUmbraCone		 No
-                ShowPenumbraCone		 No
-                ShowPenumbraLimit		 No
-                ShowSubsolarPoint		 No
-                _AGI_PIBEGINTERRAINCALLDATA "USER"
-                    AgiTrnSvr		 "world"
-                    AltOffset		 0
-                    AltScale		 1
-                    TerrainTilerID		 ""
-                    BeginImageSetDefOn
-                    END
-                    InBase		 Yes
-                    BaseOn		 Yes
-                END
-                _AGI_PIBEGINTERRAINIMAGECALLDATA "SRC"
-                    BlendMode		 Value
-                    BlendFactor		 1
-                    BlendAltitudeLowerFactor		 1
-                    BlendAltitudeUpperFactor		 0
-                    BlendAltitudeLowerAltitude		 10000
-                    BlendAltitudeUpperAltitude		 100000
-                    TextureRole		 Day
-                    URI		 "file:///Earth_PE_b.jp2"
-                    BeginImageSetDefOn
-                    END
-                    InBase		 Yes
-                    BaseOn		 Yes
-                END
-                _AGI_PIBEGINTERRAINIMAGECALLDATA "USER"
-                    BlendMode		 Altitude
-                    BlendFactor		 1
-                    BlendAltitudeLowerFactor		 1
-                    BlendAltitudeUpperFactor		 0
-                    BlendAltitudeLowerAltitude		 500000
-                    BlendAltitudeUpperAltitude		 2500000
-                    URI		 "virtual_earth://virtualearth.net/Aerial.ve"
-                    BeginImageSetDefOn
-                    END
-                    InBase		 Yes
-                    BaseOn		 Yes
-                END
-            EndCentralBody
             BeginCentralBody "Sun"
                 Show		 Yes
                 Textured		 No
@@ -308,6 +258,33 @@ BEGIN SceneWindow
                     BlendAltitudeUpperAltitude		 2500000
                     TextureRole		 Day
                     URI		 "file:///Moon.jp2"
+                    BeginImageSetDefOn
+                    END
+                    InBase		 Yes
+                    BaseOn		 Yes
+                END
+            EndCentralBody
+            BeginCentralBody "Earth"
+                Show		 Yes
+                Textured		 Yes
+                AltOffset		 0
+                Color		 #0000ff
+                SpecularColor		 #545454
+                Shininess		 40
+                ShowWater		 Yes
+                ShowUmbraCone		 No
+                ShowPenumbraCone		 No
+                ShowPenumbraLimit		 No
+                ShowSubsolarPoint		 No
+                _AGI_PIBEGINTERRAINIMAGECALLDATA "SRC"
+                    BlendMode		 Value
+                    BlendFactor		 1
+                    BlendAltitudeLowerFactor		 1
+                    BlendAltitudeUpperFactor		 0
+                    BlendAltitudeLowerAltitude		 10000
+                    BlendAltitudeUpperAltitude		 100000
+                    TextureRole		 Day
+                    URI		 "file:///Earth_PE_b.jp2"
                     BeginImageSetDefOn
                     END
                     InBase		 Yes
@@ -397,10 +374,6 @@ BEGIN SceneWindow
         END
         BEGIN CentralBodyOpts
             BeginCentralBody
-                Name		 "Earth"
-                ShowLabel		 No
-            EndCentralBody
-            BeginCentralBody
                 Name		 "Sun"
                 ShowLabel		 No
             EndCentralBody
@@ -408,14 +381,13 @@ BEGIN SceneWindow
                 Name		 "Moon"
                 ShowLabel		 Yes
             EndCentralBody
+            BeginCentralBody
+                Name		 "Earth"
+                ShowLabel		 No
+            EndCentralBody
         END CentralBodyOpts
         isShowingOverlay		 Yes
         BEGIN Overlays
-            BEGIN Overlay
-                OverlayReserveId		 1
-                BorderAttachTypeX		 Max
-                BorderAttachTypeY		 Max
-            END
             BEGIN Overlay
                 URI		 "file:///AGI_logo.png"
                 Show		 Yes
@@ -733,9 +705,9 @@ BEGIN SceneWindow
             UseLayer		 Yes
             FromName		 "Earth"
             FromRegPosAttView		 "Point"
-            FromPosition		  1.9467667775277928e+07  1.3352231220479108e+07 -5.5110597823315463e+05
-            FromOffset		  1.9467667775277928e+07  1.3352231220479108e+07 -5.5110597823315463e+05
-            FromOffsetLLR		 -2.3341167024799034e-02  6.0117763135200708e-01  2.3613044805212561e+07
+            FromPosition		  2.0456272069869492e+07  1.1168138723852884e+07  3.5787857970493968e+05
+            FromOffset		  2.0456272069869492e+07  1.1168138723852884e+07  3.5787857970493968e+05
+            FromOffsetLLR		  1.5354197938459690e-02  4.9972988221507642e-01  2.3309106946203593e+07
             ToName		 "Earth"
             ToRegPosAttView		 "Point"
             ToPosition		  0.0000000000000000e+00  0.0000000000000000e+00  0.0000000000000000e+00
@@ -743,9 +715,9 @@ BEGIN SceneWindow
             ToOffsetLLR		  0.0000000000000000e+00  0.0000000000000000e+00  0.0000000000000000e+00
             ConstantDistanceType		 None
             ConstantDistanceValue		 1
-            UpVector		  1.9247014820874958e-02  1.3200892636901487e-02  9.9972760732815313e-01
-            ViewRad		  2.3613044805212561e+07
-            ViewQuat		  2.9606250912635751e-01 -1.1147048537026546e-02 -3.4553791161880286e-03 -9.5509726957723118e-01
+            UpVector		 -1.3476034747027604e-02 -7.3572655363703414e-03  9.9988212661859510e-01
+            ViewRad		  2.3309106946203593e+07
+            ViewQuat		  2.4726580992353767e-01  7.4386199396566802e-03  1.8983213889625060e-03 -9.6891727332737465e-01
             ViewCoordSystem		 From
             ViewFromToMode		 FromTo
             ViewToCBIMtx		  1.0000000000000000e+00  0.0000000000000000e+00  0.0000000000000000e+00  0.0000000000000000e+00  1.0000000000000000e+00  0.0000000000000000e+00  0.0000000000000000e+00  0.0000000000000000e+00  1.0000000000000000e+00
@@ -759,7 +731,7 @@ BEGIN SceneWindow
             MinAngleToUpAxis		  8.7266462599716477e-03
             InitUpAxisUp		 Yes
             TempUpAxisUp		 Yes
-            CrossAxis		  5.6561402273898009e-01 -8.2467010208993774e-01  0.0000000000000000e+00
+            CrossAxis		  4.7918847045906959e-01 -8.7771203123752251e-01  0.0000000000000000e+00
             DefaultOffset		  3.5079753500000000e+07
             BaseDefaultOffset		  6.3781370000000000e+06
         END View

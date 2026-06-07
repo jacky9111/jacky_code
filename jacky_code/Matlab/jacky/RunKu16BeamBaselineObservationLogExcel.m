@@ -105,6 +105,43 @@ if ~isfield(opts,'useFullFrequencyReuse') || isempty(opts.useFullFrequencyReuse)
     opts.useFullFrequencyReuse = false; % false => 8-channel co-channel IC only
 end
 useFullFrequencyReuse = logical(opts.useFullFrequencyReuse);
+if ~isfield(opts,'gsName') || strlength(string(opts.gsName)) == 0
+    opts.gsName = "GS_01";
+end
+gsName = char(string(opts.gsName));
+if ~isfield(opts,'gsLat_deg') || ~isfinite(opts.gsLat_deg)
+    opts.gsLat_deg = 0;
+end
+if ~isfield(opts,'gsLon_deg') || ~isfinite(opts.gsLon_deg)
+    opts.gsLon_deg = 121;
+end
+if ~isfield(opts,'useIdealGsoAtGs') || isempty(opts.useIdealGsoAtGs)
+    opts.useIdealGsoAtGs = false;
+end
+useIdealGsoAtGs = logical(opts.useIdealGsoAtGs);
+if ~isfield(opts,'useSimulatedUsers') || isempty(opts.useSimulatedUsers)
+    opts.useSimulatedUsers = false;
+end
+useSimulatedUsers = logical(opts.useSimulatedUsers);
+if ~isfield(opts,'reassignUsersEachSlot') || isempty(opts.reassignUsersEachSlot)
+    opts.reassignUsersEachSlot = true;
+end
+reassignUsersEachSlot = logical(opts.reassignUsersEachSlot);
+if ~isfield(opts,'userPlacementSatList') || isempty(opts.userPlacementSatList)
+    opts.userPlacementSatList = leoList;
+end
+userPlacementSatList = cellstr(string(opts.userPlacementSatList));
+if ~isfield(opts,'userAreaSide_km') || ~isfinite(opts.userAreaSide_km)
+    opts.userAreaSide_km = 1888;
+end
+userAreaSide_km = double(opts.userAreaSide_km);
+if ~isfield(opts,'userDemand_Mbps') || isempty(opts.userDemand_Mbps) || ~isfinite(opts.userDemand_Mbps)
+    opts.userDemand_Mbps = [];
+end
+if ~isfield(opts,'userPrefix') || strlength(string(opts.userPrefix)) == 0
+    opts.userPrefix = "User_";
+end
+userPrefix = char(string(opts.userPrefix));
 
 if isfield(opts,'params') && ~isempty(opts.params)
     P = opts.params;
@@ -155,8 +192,34 @@ if ~isempty(outDir) && ~exist(outDir,'dir'), mkdir(outDir); end
 if exist(excelPath,'file'), delete(excelPath); end
 
 [leoPosDP, leoVelDP] = preloadLeo(root, leoList);
-geoPosDP = preloadGeo(root, geoList);
-gsObjMap = preloadGs(root, geoList);
+if useIdealGsoAtGs
+    geoPosDP = [];
+    gsObj = preloadGsFacilityLocal(root, gsName);
+else
+    geoPosDP = preloadGeo(root, geoList);
+    gsObjMap = preloadGs(root, geoList);
+end
+
+simUserNames = strings(0, 1);
+P_users_km = zeros(3, 0);
+simUserDemand_bps = NaN;
+if useSimulatedUsers
+    tAssignStr = datestr(tStart, 'dd mmm yyyy HH:MM:SS');
+    [simUserNames, P_users_km, ~, ~, ~] = GenerateSimulatedUsersAroundSatellites( ...
+        root, userPlacementSatList, userAreaSide_km, UperSat, tAssignStr, userPrefix);
+    if isempty(opts.userDemand_Mbps)
+        simUserDemand_bps = (satTotalDemandGbps * 1e9) / max(UperSat, 1);
+    else
+        simUserDemand_bps = double(opts.userDemand_Mbps) * 1e6;
+    end
+    assignNote = 'reassigned each slot';
+    if ~reassignUsersEachSlot
+        assignNote = sprintf('fixed assignment at %s', tAssignStr);
+    end
+    fprintf(['[RunKu16BeamBaselineObservationLogExcel] Simulated users: %d ' ...
+        '(%d/sat x %d sats, %.0f km field, %s)\n'], ...
+        size(P_users_km, 2), UperSat, numel(userPlacementSatList), userAreaSide_km, assignNote);
+end
 
 TimeU = strings(0,1); user_id = strings(0,1); serving_satellite = strings(0,1); serving_beam = nan(0,1);
 original_serving_satellite = strings(0,1); original_serving_beam = nan(0,1); relay_changed_flag = nan(0,1);
@@ -187,7 +250,26 @@ sum_user_satisfaction_after_pc_before_relay = nan(0,1);
 sum_user_satisfaction = nan(0,1);
 gso_noise_power_dBW = nan(0,1); gso_IN_proxy_dB = nan(0,1);
 
-rng(1);
+fixedUserSatIdx = [];
+fixedUserBeamIdx = [];
+if useSimulatedUsers && ~reassignUsersEachSlot
+    tAssignStr = datestr(tStart, 'dd mmm yyyy HH:MM:SS');
+    root.ExecuteCommand(['Animate * SetTime "' tAssignStr '"']);
+    if useIdealGsoAtGs
+        P_gs_assign = gsXYZ(gsObj);
+    else
+        P_gs_assign = gsXYZ(gsObjMap(geoList{1}));
+    end
+    [satPosFix, satVelFix, ~, beamBoresFix, beamCAxisFix, ~] = ku16BuildSlotSatStateLocal( ...
+        leoList, leoPosDP, leoVelDP, tAssignStr, P_gs_assign, P, basePitchOffsets_deg);
+    satGeomFix = buildSatGeomSlotEnvLocal(leoList, satPosFix, satVelFix, beamBoresFix, beamCAxisFix);
+    [~, fixedUserSatIdx, fixedUserBeamIdx] = assignUsersToNearestBeamCenterEnvLocal( ...
+        satGeomFix, P_users_km, beamHalfEW_deg, beamHalfNS_deg);
+end
+
+if ~useSimulatedUsers
+    rng(1);
+end
 for t = tStart:step:tEnd
     tStr = datestr(t, 'dd mmm yyyy HH:MM:SS');
     root.ExecuteCommand(['Animate * SetTime "' tStr '"']);
@@ -195,8 +277,13 @@ for t = tStart:step:tEnd
     P_geo_all = zeros(3, Ngeo);
     P_gs_all = zeros(3, Ngeo);
     for j = 1:Ngeo
-        P_geo_all(:,j) = stkXYZ(geoPosDP(geoList{j}), tStr);
-        P_gs_all(:,j) = gsXYZ(gsObjMap(geoList{j}));
+        if useIdealGsoAtGs
+            P_geo_all(:,j) = idealGsoXYZFromLongitudeKu16Local(double(opts.gsLon_deg));
+            P_gs_all(:,j) = gsXYZ(gsObj);
+        else
+            P_geo_all(:,j) = stkXYZ(geoPosDP(geoList{j}), tStr);
+            P_gs_all(:,j) = gsXYZ(gsObjMap(geoList{j}));
+        end
     end
     jVictim = 1;
     P_gs = P_gs_all(:, jVictim);
@@ -214,26 +301,39 @@ for t = tStart:step:tEnd
         beamCAxis{i} = c_axis;
     end
 
-    % 1) Generate users per visible satellite; total demand = satTotalDemandGbps (default 0.5 Gbps).
-    Urows = struct('uid',{},'satIdx',{},'pos',{},'demand',{},'servBeam',{});
-    for i = 1:Nleo
-        if ~satVisible(i), continue; end
-        Dtot_Gbps = max(0, satTotalDemandGbps);
-        Du_Gbps = Dtot_Gbps / UperSat;
-        for u = 1:UperSat
-            b0 = randi(Nbeam);
-            [uPos_km, ok] = sampleUserInBeamFootprint( ...
-                satPos(:,i), satVel(:,i), beamBores{i}, beamCAxis{i}, b0, ...
-                beamHalfEW_deg, beamHalfNS_deg, userInBeamCenterOnly);
-            if ~ok
-                uPos_km = 6378.137 * (satPos(:,i) / max(norm(satPos(:,i)), eps));
+    % 1) Users: shared scattered field (full-power sweep) or legacy random-in-beam.
+    if useSimulatedUsers
+        if reassignUsersEachSlot
+            satGeomSlot = buildSatGeomSlotEnvLocal(leoList, satPos, satVel, beamBores, beamCAxis);
+            [~, userSatIdxSlot, userBeamIdxSlot] = assignUsersToNearestBeamCenterEnvLocal( ...
+                satGeomSlot, P_users_km, beamHalfEW_deg, beamHalfNS_deg);
+        else
+            userSatIdxSlot = fixedUserSatIdx;
+            userBeamIdxSlot = fixedUserBeamIdx;
+        end
+        Urows = buildUrowsFromAssignmentEnvLocal(simUserNames, userSatIdxSlot, userBeamIdxSlot, ...
+            P_users_km, simUserDemand_bps);
+    else
+        Urows = struct('uid',{},'satIdx',{},'pos',{},'demand',{},'servBeam',{});
+        for i = 1:Nleo
+            if ~satVisible(i), continue; end
+            Dtot_Gbps = max(0, satTotalDemandGbps);
+            Du_Gbps = Dtot_Gbps / UperSat;
+            for u = 1:UperSat
+                b0 = randi(Nbeam);
+                [uPos_km, ok] = sampleUserInBeamFootprint( ...
+                    satPos(:,i), satVel(:,i), beamBores{i}, beamCAxis{i}, b0, ...
+                    beamHalfEW_deg, beamHalfNS_deg, userInBeamCenterOnly);
+                if ~ok
+                    uPos_km = 6378.137 * (satPos(:,i) / max(norm(satPos(:,i)), eps));
+                end
+                rec.uid = sprintf('%s_U%02d', leoList{i}, u);
+                rec.satIdx = i;
+                rec.pos = uPos_km(:);
+                rec.demand = Du_Gbps * 1e9;
+                rec.servBeam = 0;
+                Urows(end+1) = rec; %#ok<AGROW>
             end
-            rec.uid = sprintf('%s_U%02d', leoList{i}, u);
-            rec.satIdx = i;
-            rec.pos = uPos_km(:);
-            rec.demand = Du_Gbps * 1e9;
-            rec.servBeam = 0;
-            Urows(end+1) = rec; %#ok<AGROW>
         end
     end
 
@@ -1253,6 +1353,26 @@ for i = 1:numel(leoList)
 end
 end
 
+function [satPos, satVel, satSubLat, beamBores, beamCAxis, satVisible] = ku16BuildSlotSatStateLocal( ...
+    leoList, leoPosDP, leoVelDP, tStr, P_gs, P, basePitchOffsets_deg)
+Nleo = numel(leoList);
+satPos = zeros(3, Nleo);
+satVel = zeros(3, Nleo);
+satSubLat = nan(Nleo, 1);
+beamBores = cell(Nleo, 1);
+beamCAxis = cell(Nleo, 1);
+satVisible = false(Nleo, 1);
+for i = 1:Nleo
+    satPos(:, i) = stkXYZ(leoPosDP(leoList{i}), tStr);
+    satVel(:, i) = stkXYZ(leoVelDP(leoList{i}), tStr);
+    satVisible(i) = gsElev(satPos(:, i), P_gs) >= P.min_elev_deg;
+    satSubLat(i) = asind(satPos(3, i) / max(norm(satPos(:, i)), eps));
+    [b_all, c_axis] = beamBoresights(satPos(:, i) * 1000, satVel(:, i) * 1000, basePitchOffsets_deg);
+    beamBores{i} = reorderBoresightsNorthToSouth(satPos(:, i) * 1000, b_all);
+    beamCAxis{i} = c_axis;
+end
+end
+
 function geoPosDP = preloadGeo(root, geoList)
 geoPosDP = containers.Map;
 for j = 1:numel(geoList)
@@ -1262,12 +1382,21 @@ for j = 1:numel(geoList)
 end
 end
 
+function gsObj = preloadGsFacilityLocal(root, gsName)
+gsObj = root.GetObjectFromPath(['*/Facility/' char(gsName)]);
+end
+
 function gsObjMap = preloadGs(root, geoList)
 gsObjMap = containers.Map;
 for j = 1:numel(geoList)
     gn = geoList{j};
     gsObjMap(gn) = root.GetObjectFromPath(['*/Facility/GSO_GS_' gn]);
 end
+end
+
+function P_geo_km = idealGsoXYZFromLongitudeKu16Local(lon_deg)
+R_geo_km = 42164.0;
+P_geo_km = R_geo_km * [cosd(lon_deg); sind(lon_deg); 0];
 end
 
 function P = gsXYZ(gsObj)

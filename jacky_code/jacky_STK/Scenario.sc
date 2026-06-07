@@ -92,9 +92,6 @@ BEGIN Scenario
         Module		 stk_mission_spacev12.4
     END ScenarioLicenses
 
-    BEGIN QuickReports
-    END QuickReports
-
     BEGIN Extensions
 
         BEGIN ClsApp
@@ -328,19 +325,19 @@ BEGIN Scenario
             BEGIN Class
                 Name		 Satellite
                 BEGIN Favorite
-                    Type		 Report
-                    BaseDir		 Install
-                    Style		 LLA Position
-                END Favorite
-                BEGIN Favorite
-                    Type		 Report
-                    BaseDir		 Install
-                    Style		 Lighting Times
-                END Favorite
-                BEGIN Favorite
                     Type		 Graph
                     BaseDir		 Install
                     Style		 Lighting Times
+                END Favorite
+                BEGIN Favorite
+                    Type		 Report
+                    BaseDir		 Install
+                    Style		 Lighting Times
+                END Favorite
+                BEGIN Favorite
+                    Type		 Report
+                    BaseDir		 Install
+                    Style		 LLA Position
                 END Favorite
             END Class
         END ReportFavorites
@@ -1547,7 +1544,7 @@ BEGIN Scenario
 
                 StartTime		 16 Dec 2025 12:10:03.000000000
                 EndTime		 17 Dec 2025 12:10:03.000000000
-                CurrentTime		 16 Dec 2025 12:20:13.000000000
+                CurrentTime		 16 Dec 2025 12:12:57.000000000
                 Direction		 Forward
                 UpdateDelta		 10
                 RefreshDelta		 0.010000
@@ -2592,12 +2589,24 @@ BEGIN Scenario
         END Instance
         Instance Satellite/P03_S01
             Satellite/P03_S01		
+            Satellite/P03_S01/Sensor/RectBeam		
+        END Instance
+        Instance Satellite/P03_S01/Sensor/RectBeam
+            Satellite/P03_S01/Sensor/RectBeam		
         END Instance
         Instance Satellite/P03_S02
             Satellite/P03_S02		
+            Satellite/P03_S02/Sensor/RectBeam		
+        END Instance
+        Instance Satellite/P03_S02/Sensor/RectBeam
+            Satellite/P03_S02/Sensor/RectBeam		
         END Instance
         Instance Satellite/P03_S03
             Satellite/P03_S03		
+            Satellite/P03_S03/Sensor/RectBeam		
+        END Instance
+        Instance Satellite/P03_S03/Sensor/RectBeam
+            Satellite/P03_S03/Sensor/RectBeam		
         END Instance
         Instance Satellite/P03_S04
             Satellite/P03_S04		

@@ -1,0 +1,23 @@
+function opts = ApplyEvalEnvironmentToKu16(opts, evalEnv, userAreaSide_km)
+opts.leoList = cellstr(evalEnv.leoList);
+opts.geoList = cellstr(evalEnv.geoList);
+opts.tStartStr = evalEnv.tStartStr;
+opts.tEndStr = evalEnv.tEndStr;
+opts.stepSec = evalEnv.stepSec;
+opts.beamHalfEW_deg = evalEnv.beamHalfEW_deg;
+opts.beamHalfNS_deg = evalEnv.beamHalfNS_deg;
+opts.useIdealGsoAtGs = evalEnv.useIdealGsoAtGs;
+opts.gsName = evalEnv.gsName;
+opts.gsLat_deg = evalEnv.gsLat_deg;
+opts.gsLon_deg = evalEnv.gsLon_deg;
+opts.params = evalEnv.params;
+opts.useSimulatedUsers = evalEnv.useSimulatedUsers;
+opts.reassignUsersEachSlot = evalEnv.reassignUsersEachSlot;
+opts.userPlacementSatList = cellstr(evalEnv.userPlacementSatList);
+opts.usersPerSat = evalEnv.numUsersPerSat;
+opts.userDemand_Mbps = evalEnv.userDemand_Mbps;
+opts.userAreaSide_km = userAreaSide_km;
+opts.userPrefix = evalEnv.userPrefix;
+opts.userInBeamCenterOnly = false;
+opts.excelSatelliteIds = cellstr(evalEnv.recordSats);
+end
