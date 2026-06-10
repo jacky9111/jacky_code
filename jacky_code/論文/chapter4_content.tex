@@ -6,18 +6,21 @@
 
 \subsection{Method Overview}
 
-Chapter~III formulates the problem as maximizing total user satisfaction subject to user association, beam power, satellite total power, and EPFD constraints. However, the problem involves both discrete user--beam association decisions and continuous beam power configuration, and association, SINR, TDMA sharing, satisfaction, and aggregate EPFD are tightly coupled. Solving for a global optimum is therefore computationally demanding.
+Chapter~III formulates the considered problem as a joint user association and beam power control problem under user association, beam power, satellite power budget, and EPFD constraints. The association variables are discrete, while the beam power variables are continuous, making the problem a mixed-integer nonlinear optimization problem. In addition, user association affects beam loading, downlink SINR, time-division resource sharing, and satisfaction, while beam power affects both user service quality and the aggregate EPFD at the GS. Directly solving the global optimum for every time slot is therefore computationally demanding.
 
-To reduce online decision complexity, we propose Safe-Beam Assisted Power-Release Relay (SAPR-R). SAPR-R exploits the predictability of the LEO constellation, protected GS location, GSO direction, and fixed beam layout to pre-build beam-level relation records for all time slots in the observation window. For each time slot, the system records the critical satellite, north/south helper satellites, beams on the critical satellite that must be shut down, safe beams that remain active at baseline power, and beam-pair mappings between critical and helper beams. This stage depends only on satellite geometry, beam footprints, and EPFD calculation—not on user distribution—and can be completed before online user reassociation.
+To reduce online decision complexity, we propose Safe-Beam Assisted Power-Release Relay (SAPR-R). SAPR-R uses the predictable LEO satellite motion, GS location, GSO direction, and beam footprints to precompute beam-level relation records for all time slots in the observation window. For each time slot, the record includes the critical satellite, the north and south helper satellites, the closed beams on the critical satellite, the safe beams that remain active with default power, and the beam-pair mappings between critical beams and helper beams. This precomputation depends only on satellite geometry, beam footprints, and beam-level EPFD calculation, rather than user distribution, and can therefore be completed before online user reassociation.
 
-During online operation, the system reads the beam relation record for the current time slot and performs user-aware relay decisions based on user locations and associations. First, SAPR-R applies Safe-Beam Assisted Helper Relief (SAHR) so that critical safe beams attempt to take over users on helper release beams. If reassociation does not reduce the satisfaction of the transferred user or of existing users on the safe beam, the transfer is accepted and the power released from the helper release beam is returned to the helper satellite's available power pool. Next, the helper satellite allocates the power pool to helper relay beams according to relay demand, increasing capacity for subsequent service to closed-beam users. Finally, SAPR-R applies Beam-Pair Local Relay (BPLR): within each closed-beam/helper relay-beam pair, critical closed-beam users are ranked and allocated sequentially according to relay link quality.
 
-In summary, the proposed method consists of the following steps:
+During online operation, SAPR-R loads the beam relation record of the current time slot and makes user-aware reassociation decisions based on user locations, current associations, and service satisfaction. First, Safe-Beam Assisted Helper Relief (SAHR) lets critical safe beams take over selected users originally served by helper release beams. A reassociation is accepted only when it does not reduce the satisfaction of the transferred user or the users already served by the critical safe beam. The transmit power no longer required by the helper release beams is then added to the available power budget of the helper satellite.
+
+Next, the helper satellite allocates its available power budget to helper relay beams according to relay demand, so that these beams can provide additional service capacity for users affected by closed beams. Finally, Beam-Pair Local Relay (BPLR) reassociates closed-beam users to feasible helper relay beams within the precomputed beam-pair mappings. Candidate users are served sequentially according to relay link quality and remaining relay capacity.
+
+In summary, SAPR-R consists of the following steps:
 \begin{itemize}[leftmargin=*,nosep]
-  \item \textbf{Time-slot beam relation record:} Pre-record critical/helper satellites, closed/safe beams, and beam-pair mappings for each time slot.
-  \item \textbf{Safe-Beam Assisted Helper Relief (SAHR):} Use critical safe beams to take over selected helper users and release helper satellite power without lowering satisfaction.
-  \item \textbf{Helper relay beam boosting:} Allocate the available power pool to helper relay beams according to relay demand.
-  \item \textbf{Beam-Pair Local Relay (BPLR):} Within each beam pair, allocate relay capacity to closed-beam users according to relay link quality.
+  \item \textbf{Time-slot beam relation record:} Precompute the critical/helper satellites, closed/safe beams, and beam-pair mappings for each time slot.
+  \item \textbf{Safe-Beam Assisted Helper Relief (SAHR):} Use critical safe beams to take over selected helper users without reducing satisfaction, thereby releasing helper satellite power.
+  \item \textbf{Helper relay beam boosting:} Allocate the available helper satellite power budget to helper relay beams according to relay demand.
+  \item \textbf{Beam-Pair Local Relay (BPLR):} Reassociate closed-beam users to feasible helper relay beams within each beam pair according to relay link quality and remaining relay capacity.
 \end{itemize}
 
 \subsection{Time-Slot Beam Relation Record}
@@ -29,11 +32,11 @@ In summary, the proposed method consists of the following steps:
   \label{fig:ch4_beam_relation_record}
 \end{figure*}
 
-For each time slot $t$, we construct a beam relation record $\mathcal{R}_B(t)$. Figure~\ref{fig:ch4_beam_relation_record} illustrates the time-slot beam status considered in this work, including the:
+For each time slot $t$, SAPR-R constructs a beam relation record $\mathcal{R}_B(t)$, which stores the beam-level information used by the online reassociation and relay procedures. Figure~\ref{fig:ch4_beam_relation_record} illustrates the time-varying beam status of the critical satellite and its helper satellites. The record is defined as
 \begin{equation*}
 \begin{split}
 \mathcal{R}_B(t)=\bigl(
-& s^{\mathrm{c}}(t),\,
+& s^{\mathrm{C}}(t),\,
 s^{\mathrm{N}}(t),\,
 s^{\mathrm{S}}(t), \\
 & \mathcal{B}_c^{\mathrm{off}}(t),\,
@@ -43,137 +46,126 @@ s^{\mathrm{S}}(t), \\
 \bigr).
 \end{split}
 \end{equation*}
-This record stores the beam-level information required by SAHR and BPLR, where $s^{\mathrm{c}}(t)$, $s^{\mathrm{N}}(t)$, and $s^{\mathrm{S}}(t)$ are the critical, north helper, and south helper satellites, respectively. $\mathcal{B}_c^{\mathrm{off}}(t)$ is the set of beams on the critical satellite shut down due to the EPFD constraint; $\mathcal{B}_c^{\mathrm{safe}}(t)$ is the set of safe beams that remain on at baseline power. $\mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$ and $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$ denote the safe-beam-to-helper-release-beam mapping and the closed-beam-to-helper-relay-beam mapping, respectively.
+In this record, $s^{\mathrm{C}}(t)$, $s^{\mathrm{N}}(t)$, and $s^{\mathrm{S}}(t)$ denote the critical satellite, north helper satellite, and south helper satellite, respectively. $\mathcal{B}_c^{\mathrm{off}}(t)$ denotes the set of closed beams on the critical satellite, and $\mathcal{B}_c^{\mathrm{safe}}(t)$ denotes the set of safe beams that remain active with default power. $\mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$ and $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$ denote the safe-beam-to-helper-release-beam mapping and the closed-beam-to-helper-relay-beam mapping, respectively.
 
 \mdsubsubsection{Critical and Helper Satellite Identification}
-In each time slot $t$, the system identifies the critical satellite that poses the dominant EPFD risk to the protected GS from LEO--GS geometry:
-\begin{equation*}
-s^{\mathrm{c}}(t).
-\end{equation*}
-From simulation, EPFD violations are dominated by high-risk beams on the critical satellite; we therefore apply shutdown only to beams on $s^{\mathrm{c}}(t)$, not to helper or other visible satellites. The along-track north and south neighbors of the critical satellite are selected as helpers:
-\begin{equation*}
-s^{\mathrm{N}}(t),\quad s^{\mathrm{S}}(t).
-\end{equation*}
+In each time slot $t$, the critical satellite $s^{\mathrm{C}}(t)$ is identified as the visible LEO satellite that contributes the largest EPFD risk at the GS. Since the EPFD violation is mainly caused by the critical satellite, beam shutdown is applied only to beams on $s^{\mathrm{C}}(t)$, while helper and other visible satellites remain available for service continuity. The along-track north and south neighboring satellites of $s^{\mathrm{C}}(t)$ are selected as helper satellites, denoted by $s^{\mathrm{N}}(t)$ and $s^{\mathrm{S}}(t)$, respectively.
 
 \mdsubsubsection{EPFD-Driven Beam Status Determination}
-For each critical beam $b\in\mathcal{B}_{s^{\mathrm{c}}}$, define the EPFD risk score
+For each beam $b$ on the critical satellite, the beam-level EPFD risk score is defined as
 \begin{equation*}
-q_{c,b}(t)=\mathrm{EPFD}_{s^{\mathrm{c}},b}(t).
+q_{c,b}(t)=\mathrm{EPFD}_{s^{\mathrm{C}},b}(t).
 \end{equation*}
-Critical beams are sorted in descending order of $q_{c,b}(t)$, and a greedy shutdown rule is applied: at each step, shut down the beam with the highest current EPFD risk score until
+The critical beams are sorted in descending order of $q_{c,b}(t)$. A greedy shutdown rule is then applied: at each step, the beam with the highest EPFD risk score is shut down until the aggregate EPFD at the GS satisfies the applicable EPFD limit.
+
+The beams shut down by this procedure form the closed-beam set $\mathcal{B}_c^{\mathrm{off}}(t)$, and the remaining active beams form the safe-beam set:
 \begin{equation*}
-\mathrm{EPFD}_{\mathrm{agg}}(t)\le \mathrm{EPFD}_{\mathrm{lim}}.
+\mathcal{B}_c^{\mathrm{safe}}(t)=\mathcal{B}_{s^{\mathrm{C}}}\setminus \mathcal{B}_c^{\mathrm{off}}(t).
 \end{equation*}
-Shut-down beams form
-\begin{equation*}
-\mathcal{B}_c^{\mathrm{off}}(t),
-\end{equation*}
-and the remaining beams form the safe set:
-\begin{equation*}
-\mathcal{B}_c^{\mathrm{safe}}(t)=\mathcal{B}_{s^{\mathrm{c}}}\setminus \mathcal{B}_c^{\mathrm{off}}(t).
-\end{equation*}
-Beam status is determined solely from beam-level EPFD contributions and the regulatory limit, without user distribution, and can be precomputed before online reassociation.
+
+Because this beam status determination depends only on beam-level EPFD contributions and the EPFD limit, it is independent of user distribution and can be precomputed before online user reassociation.
 
 \mdsubsubsection{Beam-Pair Mapping Construction}
-Given $\mathcal{B}_c^{\mathrm{off}}(t)$ and $\mathcal{B}_c^{\mathrm{safe}}(t)$, beam-pair mappings are built from footprint overlap. For SAHR,
+Given the closed-beam set $\mathcal{B}_c^{\mathrm{off}}(t)$ and the safe-beam set $\mathcal{B}_c^{\mathrm{safe}}(t)$, SAPR-R constructs beam-pair mappings based on footprint overlap between the critical satellite and its helper satellites.
+
+For SAHR, the safe-beam-to-helper-release-beam mapping is defined as
 \begin{equation*}
 \begin{split}
 \mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)=
 \bigl\{
-&(b_c^{\mathrm{safe}},b_h^{\mathrm{rel}}) : \\
-&\mathcal{F}_{s^{\mathrm{c}},b_c^{\mathrm{safe}}}(t)\cap
-\mathcal{F}_{s_h,b_h^{\mathrm{rel}}}(t)\neq\emptyset, \\
-& s_h\in\{s^{\mathrm{N}}(t),s^{\mathrm{S}}(t)\}
-\bigr\},
+&(b_c^{\mathrm{safe}},s_h,b_h^{\mathrm{rel}}) : \\
+&\quad b_c^{\mathrm{safe}}\in\mathcal{B}_c^{\mathrm{safe}}(t), \\
+&\quad s_h\in\{s^{\mathrm{N}}(t),s^{\mathrm{S}}(t)\}, \\
+&\quad b_h^{\mathrm{rel}}\in\mathcal{B}_{s_h}, \\
+&\quad \mathcal{F}_{s^{\mathrm{C}},b_c^{\mathrm{safe}}}(t)\cap
+\mathcal{F}_{s_h,b_h^{\mathrm{rel}}}(t)\neq\emptyset
+\bigr\}.
 \end{split}
 \end{equation*}
-which identifies which helper release-beam users a critical safe beam can take over.
+This mapping identifies the helper beams whose users can be reassociated to critical safe beams.
 
-For BPLR,
+For BPLR, the closed-beam-to-helper-relay-beam mapping is defined as
 \begin{equation*}
 \begin{split}
 \mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)=
 \bigl\{
-&(b_c^{\mathrm{off}},b_h^{\mathrm{relay}}) : \\
-&\mathcal{F}_{s^{\mathrm{c}},b_c^{\mathrm{off}}}(t)\cap
+&(b_c^{\mathrm{off}},s_h,b_h^{\mathrm{relay}}) : \\
+&\quad b_c^{\mathrm{off}}\in\mathcal{B}_c^{\mathrm{off}}(t), \\
+&\quad s_h\in\{s^{\mathrm{N}}(t),s^{\mathrm{S}}(t)\}, \\
+&\quad b_h^{\mathrm{relay}}\in\mathcal{B}_{s_h}, \\
+&\quad \mathcal{F}_{s^{\mathrm{C}},b_c^{\mathrm{off}}}(t)\cap
 \mathcal{F}_{s_h,b_h^{\mathrm{relay}}}(t)\neq\emptyset
-\bigr\},
+\bigr\}.
 \end{split}
 \end{equation*}
-which identifies which helper relay beams can serve critical closed-beam users.
+This mapping identifies the helper beams that can serve users originally located under critical closed beams.
 
-Figure~\ref{fig:ch4_beam_pair_mapping} visualizes the two beam-pair mappings stored in $\mathcal{R}_B(t)$: $\mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$ for SAHR and $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$ for BPLR.
+Figure~\ref{fig:ch4_beam_pair_mapping} illustrates the two mappings stored in $\mathcal{R}_B(t)$: $\mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$ for SAHR and $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$ for BPLR. These mappings rely only on footprint overlap and therefore can be applied to general multi-beam LEO systems, as long as the beam footprints and helper-satellite geometry are known. In the considered along-track helper scenario, the overlap is local and can be handled within predefined beam pairs, avoiding a global user-to-beam matching process.
 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{ch4_beam_pair_mapping}
-  \caption{Beam-pair mapping tables at time slot $t$. (a) $\mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$: critical safe beams on $s^{\mathrm{c}}$ mapped to helper release beams on $s^{\mathrm{N}}$/$s^{\mathrm{S}}$ (SAHR). (b) $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$: critical closed beams mapped to helper relay beams (BPLR).}
+  \caption{Beam-pair mapping tables at time slot $t$. (a) $\mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$: critical safe beams on $s^{\mathrm{C}}$ mapped to helper release beams on $s^{\mathrm{N}}$/$s^{\mathrm{S}}$ (SAHR). (b) $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$: critical closed beams mapped to helper relay beams (BPLR).}
   \label{fig:ch4_beam_pair_mapping}
 \end{figure*}
 
-Under the Walker-star constellation and fixed beam layout, the critical satellite and north/south helpers exhibit near one-to-one beam overlap: north-half beams on the critical satellite overlap mainly with south-half beams on the north helper, and south-half critical beams with north-half beams on the south helper. Relay can therefore be executed locally within beam pairs without global matching.
-
-Helper beams are split into release beams (to free helper power) and relay beams (to serve critical closed-beam users). We assume no overlap within the same time slot:
+For each helper satellite, helper beams are assigned to one of two roles in a time slot: release beams for SAHR and relay beams for BPLR. To avoid role conflict, the two sets are kept disjoint:
 \begin{equation*}
-\mathcal{B}_h^{\mathrm{rel}}(t)\cap \mathcal{B}_h^{\mathrm{relay}}(t)=\emptyset.
+\mathcal{B}_{s_h}^{\mathrm{rel}}(t)\cap \mathcal{B}_{s_h}^{\mathrm{relay}}(t)=\emptyset,
+\qquad \forall s_h\in\{s^{\mathrm{N}}(t),s^{\mathrm{S}}(t)\}.
 \end{equation*}
 
 \subsection{Safe-Beam Assisted Helper Relief}
 
-After loading $\mathcal{R}_B(t)$, the online procedure starts with SAHR. Figure~\ref{fig:ch4_Safe-beam_assisted_power_release} illustrates the SAHR process. The goal is not to serve critical closed-beam users directly, but to use critical safe beams to take over helper users so that helper satellites release power for subsequent relay boosting.
+After loading $\mathcal{R}_B(t)$, the online procedure starts with SAHR, as illustrated in Fig.~\ref{fig:ch4_Safe-beam_assisted_power_release}. SAHR does not serve critical closed-beam users directly. Instead, it uses critical safe beams to take over selected users originally served by helper release beams, so that the corresponding helper satellite can make more power available for subsequent relay-beam boosting.
 
-For each
-\begin{equation*}
-(b_c^{\mathrm{safe}},b_h^{\mathrm{rel}})\in \mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t),
-\end{equation*}
-we identify helper users currently served by $b_h^{\mathrm{rel}}$ that also lie in the footprint of $b_c^{\mathrm{safe}}$:
+For each mapping tuple $(b_c^{\mathrm{safe}},s_h,b_h^{\mathrm{rel}})\in \mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$, SAPR-R identifies the helper users that can be transferred from the helper release beam to the critical safe beam. Let $u_h$ denote a helper user. The candidate helper-user set is defined as
 \begin{equation*}
 \begin{split}
-&\mathcal{V}_{\mathrm{rel}}(b_c^{\mathrm{safe}},b_h^{\mathrm{rel}},t)= \\
+&\mathcal{V}_{\mathrm{rel}}(b_c^{\mathrm{safe}},s_h,b_h^{\mathrm{rel}},t)= \\
 &\quad
 \left\{
-v :
-v\in\mathcal{U}_{s_h,b_h^{\mathrm{rel}}}(t),\;
-v\in\mathcal{F}_{s^{\mathrm{c}},b_c^{\mathrm{safe}}}(t)
+u_h\in\mathcal{U}(t) :
+x_{u_h,s_h,b_h^{\mathrm{rel}}}(t)=1,\right. \\
+&\qquad\left.
+u_h\in\mathcal{F}_{s^{\mathrm{C}},b_c^{\mathrm{safe}}}(t)
 \right\}.
 \end{split}
 \end{equation*}
-If candidate helper user $v$ is reassociated to $b_c^{\mathrm{safe}}$, the reduction in required power on the helper release beam is
+The first condition means that user $u_h$ is currently served by helper release beam $b_h^{\mathrm{rel}}$ on helper satellite $s_h$. The second condition means that the same user is also covered by the critical safe beam $b_c^{\mathrm{safe}}$. Therefore, users in $\mathcal{V}_{\mathrm{rel}}(b_c^{\mathrm{safe}},s_h,b_h^{\mathrm{rel}},t)$ are eligible to be reassociated from the helper release beam to the critical safe beam.
+
+If candidate helper user $u_h$ is reassociated to $b_c^{\mathrm{safe}}$, the reduction in the required transmit power of the helper release beam is defined as
 \begin{equation*}
-\Delta P_v^{\mathrm{rel}}(t)=
+\Delta P_{u_h}^{\mathrm{rel}}(t)=
 P_{b_h^{\mathrm{rel}}}^{\mathrm{req,old}}(t)-
-P_{b_h^{\mathrm{rel}}}^{\mathrm{req,new}}(v,t).
+P_{b_h^{\mathrm{rel}}}^{\mathrm{req,new}}(u_h,t).
 \end{equation*}
-The SAHR score is
+Here, $P_{b_h^{\mathrm{rel}}}^{\mathrm{req,old}}(t)$ denotes the required transmit power of helper release beam $b_h^{\mathrm{rel}}$ before transferring $u_h$, while $P_{b_h^{\mathrm{rel}}}^{\mathrm{req,new}}(u_h,t)$ denotes the required transmit power of the same beam after $u_h$ is removed from that beam. Therefore, $\Delta P_{u_h}^{\mathrm{rel}}(t)$ represents the amount of helper transmit power released by transferring $u_h$ to the critical safe beam.
+
+Candidates are ranked in descending order of $\Delta P_{u_h}^{\mathrm{rel}}(t)$, so users that release more helper power are considered first. A trial reassociation is accepted only when the transferred helper user and the original users on the critical safe beam do not lose satisfaction:
 \begin{equation*}
-S_{\mathrm{relief}}(v,t)=\Delta P_v^{\mathrm{rel}}(t).
-\end{equation*}
-Candidates are sorted in descending order of $S_{\mathrm{relief}}(v,t)$. A trial reassociation is accepted only if the transferred user does not lose satisfaction and no original user on the safe beam loses satisfaction:
-\begin{equation*}
-\mathrm{sat}_v^{\mathrm{safe}}(t)\ge \mathrm{sat}_v^{\mathrm{old}}(t),
+\mathrm{sat}_{u_h}^{\mathrm{new}}(t)\ge \mathrm{sat}_{u_h}^{\mathrm{old}}(t),
 \end{equation*}
 \begin{equation*}
-\mathrm{sat}_w^{\mathrm{new}}(t)\ge \mathrm{sat}_w^{\mathrm{old}}(t),
-\qquad \forall w\in\mathcal{U}_{b_c^{\mathrm{safe}}}^{\mathrm{ori}}(t).
+\mathrm{sat}_{u_s}^{\mathrm{new}}(t)\ge \mathrm{sat}_{u_s}^{\mathrm{old}}(t),
+\qquad \forall u_s\in\mathcal{U}_{b_c^{\mathrm{safe}}}^{\mathrm{ori}}(t).
 \end{equation*}
-Accepted transfers return $\Delta P_v^{\mathrm{rel}}(t)$ to the helper power pool. For helper satellite $s_h$, total released power is
+Accepted transfers form the set $\mathcal{A}_{\mathrm{rel}}(s_h,t)$. The total released power on helper satellite $s_h$ is
 \begin{equation*}
 P_{s_h}^{\mathrm{rel}}(t)=
-\sum_{v\in\mathcal{A}_{\mathrm{rel}}(s_h,t)} \Delta P_v^{\mathrm{rel}}(t),
+\sum_{u_h\in\mathcal{A}_{\mathrm{rel}}(s_h,t)} \Delta P_{u_h}^{\mathrm{rel}}(t).
 \end{equation*}
-where $\mathcal{A}_{\mathrm{rel}}(s_h,t)$ is the set of helper users successfully taken over by safe beams.
-
-Unused power under baseline operation is
-\begin{equation*}
-P_{s_h}^{\mathrm{unused}}(t)=
-P_{s_h}^{\max}-\sum_{b\in\mathcal{B}_{s_h}} P^{\mathrm{base}},
-\end{equation*}
-so the relay boosting pool is
+The available power budget for relay-beam boosting consists of the unused satellite power under the default beam-power profile and the power released by SAHR:
 \begin{equation*}
 P_{s_h}^{\mathrm{pool}}(t)=
-P_{s_h}^{\mathrm{unused}}(t)+P_{s_h}^{\mathrm{rel}}(t).
+P_{s_h}^{\mathrm{unused}}(t)+P_{s_h}^{\mathrm{rel}}(t),
 \end{equation*}
-All helper beams except release and relay beams remain at baseline power $P^{\mathrm{base}}$.
+where
+\begin{equation*}
+P_{s_h}^{\mathrm{unused}}(t)=
+P_{s_h}^{\max}-\sum_{b\in\mathcal{B}_{s_h}} P_{s_h,b}^{\mathrm{def}}.
+\end{equation*}
+Helper beams that are not selected as release beams or relay beams keep their default transmit powers.
 
 \begin{figure*}[t]
   \centering
@@ -184,66 +176,68 @@ All helper beams except release and relay beams remain at baseline power $P^{\ma
 
 \subsection{Helper Relay Beam Boosting}
 
-After SAHR, helper satellite $s_h$ uses $P_{s_h}^{\mathrm{pool}}(t)$ to boost helper relay beams. The relay beam set is
+After SAHR, each helper satellite $s_h$ uses its available relay power budget $P_{s_h}^{\mathrm{pool}}(t)$, defined in the previous subsection, to increase the transmit power of helper relay beams. For helper satellite $s_h$, the relay beam set is defined as
 \begin{equation*}
 \begin{split}
 \mathcal{B}_{s_h}^{\mathrm{relay}}(t)=
 \bigl\{
 &b_h^{\mathrm{relay}} :
 \exists\, b_c^{\mathrm{off}}\in\mathcal{B}_c^{\mathrm{off}}(t): \\
-&\qquad (b_c^{\mathrm{off}},b_h^{\mathrm{relay}})\in \mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)
+&\qquad (b_c^{\mathrm{off}},s_h,b_h^{\mathrm{relay}})\in
+\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)
 \bigr\}.
 \end{split}
 \end{equation*}
-Extra power needed to raise a relay beam from baseline to its upper bound is
-\begin{equation*}
-\Delta P_{b_h^{\mathrm{relay}}}^{\max}(t)=
-P_{s_h,b_h^{\mathrm{relay}}}^{\max}-P^{\mathrm{base}}.
-\end{equation*}
-Relay demand for each helper relay beam is
-\begin{equation*}
-D_{b_h^{\mathrm{relay}}}^{\mathrm{relay}}(t)=
-\left|\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)\right|,
-\end{equation*}
-where $\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)$ is the set of critical users in the mapped closed beam that can be covered by $b_h^{\mathrm{relay}}$.
+This set contains the helper beams on $s_h$ that are mapped to at least one closed beam on the critical satellite and can therefore be used for BPLR.
 
-If $P_{s_h}^{\mathrm{pool}}(t)$ suffices to boost all relay beams to their upper bounds, every relay beam is fully boosted. Otherwise, we apply relay-demand-priority boosting: relay beams are sorted by $D_{b_h^{\mathrm{relay}}}^{\mathrm{relay}}(t)$ in descending order, and higher-demand beams receive power first.
-
-If the remaining pool can raise the current beam to $P_{s_h,b_h^{\mathrm{relay}}}^{\max}$, it is set to the upper bound. If the pool cannot fully boost the next beam but is still positive, the remainder is assigned as a partial boost above $P^{\mathrm{base}}$, avoiding wasted pool power and increasing available relay capacity.
-
-All helper relay beams then proceed to BPLR with final transmit powers that determine their relay capacities.
-
-\subsection{Beam-Pair Local Relay}
-
-After relay-beam boosting, BPLR runs within each closed-beam-to-helper-relay-beam pair. Figure~\ref{fig:ch4_Beam-pair_local_relay} illustrates the BPLR process. For
-\begin{equation*}
-(b_c^{\mathrm{off}},b_h^{\mathrm{relay}})\in \mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t),
-\end{equation*}
-we identify critical users served by $b_c^{\mathrm{off}}$ that also lie in the footprint of $b_h^{\mathrm{relay}}$:
+To estimate the relay demand of each helper relay beam, SAPR-R first identifies the candidate closed-beam users that can be served by that beam. Let $u_c$ denote a user originally served by a closed beam on the critical satellite. For helper relay beam $b_h^{\mathrm{relay}}$, the candidate user set is defined as
 \begin{equation*}
 \begin{split}
-&\mathcal{U}_{\mathrm{pair}}(b_c^{\mathrm{off}},b_h^{\mathrm{relay}},t)= \\
+&\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)= \\
 &\quad
 \left\{
-u :
-u\in\mathcal{U}_{s^{\mathrm{c}},b_c^{\mathrm{off}}}(t),\;
-u\in\mathcal{F}_{s_h,b_h^{\mathrm{relay}}}(t)
+u_c\in\mathcal{U}(t) :
+\exists\, b_c^{\mathrm{off}}\in\mathcal{B}_c^{\mathrm{off}}(t):
+\right. \\
+&\qquad\left.
+(b_c^{\mathrm{off}},s_h,b_h^{\mathrm{relay}})\in
+\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t),\right. \\
+&\qquad\left.
+x_{u_c,s^{\mathrm{C}},b_c^{\mathrm{off}}}(t)=1,\;
+u_c\in\mathcal{F}_{s_h,b_h^{\mathrm{relay}}}(t)
 \right\}.
 \end{split}
 \end{equation*}
-The expected achievable rate if candidate critical user $u$ is served by the helper relay beam is
-\begin{equation*}
-R_{u,b_h^{\mathrm{relay}}}(t).
-\end{equation*}
-The BPLR score is
-\begin{equation*}
-S_{\mathrm{relay}}(u,t)=R_{u,b_h^{\mathrm{relay}}}(t).
-\end{equation*}
-Candidates are sorted in descending order of $S_{\mathrm{relay}}(u,t)$. The helper relay beam's remaining relay capacity (after protecting existing helper users) is computed from its final transmit power.
+The condition $x_{u_c,s^{\mathrm{C}},b_c^{\mathrm{off}}}(t)=1$ means that user $u_c$ is originally associated with the closed beam $b_c^{\mathrm{off}}$ on the critical satellite. The footprint condition means that the same user is also covered by helper relay beam $b_h^{\mathrm{relay}}$. Therefore, $\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)$ represents the closed-beam users that are eligible to be relayed by $b_h^{\mathrm{relay}}$.
 
-Remaining capacity is allocated sequentially to sorted users. If capacity covers demand $D_u(t)$, $u$ is reassociated to the helper relay beam and satisfaction is updated. If the next user cannot be fully served but capacity remains positive, partial capacity is assigned and the pair process stops. When capacity is exhausted, the pair relay process ends.
+The relay demand of helper relay beam $b_h^{\mathrm{relay}}$ is defined as the number of its candidate users:
+\begin{equation*}
+D_{b_h^{\mathrm{relay}}}^{\mathrm{relay}}(t)=
+\left|\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)\right|.
+\end{equation*}
+This demand value is used only to prioritize relay-beam boosting. The actual user reassociation is performed later in BPLR after the final transmit power of each helper relay beam is determined.
 
-All relay decisions respect the single-association constraint: a relayed user moves from the critical closed beam to the helper relay beam and is served by only one beam in the time slot.
+For a helper relay beam $b_h^{\mathrm{relay}}$, let $\Delta P_{b_h^{\mathrm{relay}}}^{\mathrm{boost,max}}(t)$ denote the additional power required to increase its transmit power from the default value to the beam-level maximum:
+\begin{equation*}
+\Delta P_{b_h^{\mathrm{relay}}}^{\mathrm{boost,max}}(t)=
+P_{s_h,b_h^{\mathrm{relay}}}^{\max}-
+P_{s_h,b_h^{\mathrm{relay}}}^{\mathrm{def}}.
+\end{equation*}
+If $P_{s_h}^{\mathrm{pool}}(t)$ is sufficient to raise all helper relay beams to their beam-level maximum powers, all relay beams are fully boosted. Otherwise, helper relay beams are sorted in descending order of $D_{b_h^{\mathrm{relay}}}^{\mathrm{relay}}(t)$, and beams with higher relay demand receive additional power first.
+
+For each helper relay beam, if the remaining available relay power budget is sufficient, its transmit power is increased to $P_{s_h,b_h^{\mathrm{relay}}}^{\max}$. If the remaining budget is positive but insufficient for full boosting, the remaining power is assigned as a partial boost above $P_{s_h,b_h^{\mathrm{relay}}}^{\mathrm{def}}$. This avoids leaving unused relay power and increases the available capacity for BPLR.
+
+After this step, each helper relay beam proceeds to BPLR with its final transmit power.
+
+\subsection{Beam-Pair Local Relay}
+
+After relay-beam boosting, BPLR performs the actual reassociation of closed-beam users to helper relay beams, as illustrated in Fig.~\ref{fig:ch4_Beam-pair_local_relay}. For each mapping tuple $(b_c^{\mathrm{off}},s_h,b_h^{\mathrm{relay}})\in \mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$, BPLR considers the users in $\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)$ that were originally served by the closed beam $b_c^{\mathrm{off}}$. Since $\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)$ already includes the coverage condition of the helper relay beam, these users are eligible to be reassociated to $b_h^{\mathrm{relay}}$.
+
+Let $u_c$ denote a closed-beam user considered in this beam pair. For each candidate user $u_c$, let $R_{u_c,b_h^{\mathrm{relay}}}(t)$ denote the achievable service rate if $u_c$ is served by helper relay beam $b_h^{\mathrm{relay}}$ using the final transmit power obtained after relay-beam boosting. Candidates are ranked in descending order of $R_{u_c,b_h^{\mathrm{relay}}}(t)$, so users with better relay link quality are considered first.
+
+Let $C_{b_h^{\mathrm{relay}}}^{\mathrm{rem}}(t)$ denote the remaining relay capacity of helper relay beam $b_h^{\mathrm{relay}}$ after preserving the service of its original helper users. This remaining capacity is allocated sequentially to the sorted closed-beam users. If $C_{b_h^{\mathrm{relay}}}^{\mathrm{rem}}(t)$ can satisfy the demand $D_{u_c}(t)$ of user $u_c$, the user is reassociated to $b_h^{\mathrm{relay}}$ and its satisfaction is updated. If the remaining capacity is positive but insufficient to fully satisfy the next user, partial capacity is assigned to that user and the beam-pair process stops. When the remaining capacity is exhausted, no further users are reassociated in this beam pair.
+
+All relay decisions follow the single-association constraint. A relayed user is moved from the critical closed beam to the helper relay beam and is served by only one beam in the time slot.
 
 \begin{figure*}[t]
   \centering
@@ -262,74 +256,98 @@ The online procedure uses a single time-slot-based algorithm. In each time slot,
 \scriptsize
 \begin{algorithmic}[1]
 \Require $\{\mathcal{R}_B(t)\}_{t=1}^{T}$, initial $\mathbf{x}(t)$, $\mathcal{U}(t)$, $D_u(t)$
-\Require $P^{\mathrm{base}}$, $P_{s,b}^{\max}$, $P_s^{\max}$, ${F_{s,b}(t)}$, capacity/satisfaction model
+\Require $P_{s,b}^{\mathrm{def}}$, $P_{s,b}^{\max}$, $P_s^{\max}$, $\mathcal{F}_{s,b}(t)$, capacity/satisfaction model
 \Ensure $\mathbf{x}^{\mathrm{final}}(t)$, $P_{s,b}^{\mathrm{final}}(t)$, $\mathrm{sat}_u^{\mathrm{final}}(t)$
 
 \For{$t=1$ \textbf{to} $T$}
-    \State Load $\mathcal{R}_B(t)$; initialize beam powers per record and baseline operation
-    \State \textbf{Stage~1: SAHR and relay-beam boosting}
-    \ForAll{$(b_c^{\mathrm{safe}},b_h^{\mathrm{rel}})\in \mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$}
-        \State Build candidate helper users; compute $\Delta P_v^{\mathrm{rel}}(t)$
-        \State Sort candidates by $\Delta P_v^{\mathrm{rel}}(t)$ descending
-        \ForAll{$v$ in sorted order}
-            \State Trial reassociation $v$: $b_h^{\mathrm{rel}}\to b_c^{\mathrm{safe}}$
-            \If{$v$ not degraded and users on $b_c^{\mathrm{safe}}$ not degraded}
-                \State Accept; update association and $P_{s_h}^{\mathrm{pool}}(t)$
+    \State Load $\mathcal{R}_B(t)$; initialize beam powers per default profile and closed/safe beam status
+    \State Initialize $P_{s_h}^{\mathrm{rel}}(t)=0$ for each $s_h\in\{s^{\mathrm{N}}(t),s^{\mathrm{S}}(t)\}$
+    \State \textbf{Stage~1: SAHR}
+    \ForAll{$(b_c^{\mathrm{safe}},s_h,b_h^{\mathrm{rel}})\in \mathcal{M}_{\mathrm{safe}\to\mathrm{rel}}(t)$}
+        \State Build $\mathcal{V}_{\mathrm{rel}}(b_c^{\mathrm{safe}},s_h,b_h^{\mathrm{rel}},t)$ using $\mathbf{x}(t)$ and beam footprints
+        \State Compute $\Delta P_{u_h}^{\mathrm{rel}}(t)$ for each $u_h\in \mathcal{V}_{\mathrm{rel}}(b_c^{\mathrm{safe}},s_h,b_h^{\mathrm{rel}},t)$
+        \State Sort candidate helper users by $\Delta P_{u_h}^{\mathrm{rel}}(t)$ descending
+        \ForAll{$u_h$ in sorted order}
+            \State Trial reassociation of $u_h$ from $b_h^{\mathrm{rel}}$ to $b_c^{\mathrm{safe}}$
+            \If{transferred helper user and original users on $b_c^{\mathrm{safe}}$ do not lose satisfaction}
+                \State Accept the reassociation
+                \State Update $\mathbf{x}(t)$, satisfaction values, and $P_{s_h}^{\mathrm{rel}}(t)$
             \EndIf
         \EndFor
     \EndFor
+    \State \textbf{Stage~1 continued: helper relay beam boosting}
     \ForAll{$s_h\in\{s^{\mathrm{N}}(t),s^{\mathrm{S}}(t)\}$}
-        \State Extract $\mathcal{B}_{s_h}^{\mathrm{relay}}(t)$; compute relay demand; sort by demand
-        \ForAll{$b_h^{\mathrm{relay}}\in \mathcal{B}_{s_h}^{\mathrm{relay}}(t)$ in sorted order}
-            \State Allocate $P_{s_h}^{\mathrm{pool}}(t)$ (full boost, partial boost, or baseline)
+        \State Compute unused power $P_{s_h}^{\mathrm{unused}}(t)$ under default beam-power profile
+        \State Compute relay power budget $P_{s_h}^{\mathrm{pool}}(t)=P_{s_h}^{\mathrm{unused}}(t)+P_{s_h}^{\mathrm{rel}}(t)$
+        \State Extract helper relay beam set $\mathcal{B}_{s_h}^{\mathrm{relay}}(t)$ from $\mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$
+        \ForAll{$b_h^{\mathrm{relay}}\in \mathcal{B}_{s_h}^{\mathrm{relay}}(t)$}
+            \State Build $\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)$
+            \State Compute relay demand $D_{b_h^{\mathrm{relay}}}^{\mathrm{relay}}(t)=|\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)|$
+            \State Compute $\Delta P_{b_h^{\mathrm{relay}}}^{\mathrm{boost,max}}(t)$ for boosting $b_h^{\mathrm{relay}}$ to beam-level maximum
         \EndFor
-        \State Check $\sum_b P_{s,b}(t)\le P_{s_h}^{\max}$
+        \State Sort helper relay beams by $D_{b_h^{\mathrm{relay}}}^{\mathrm{relay}}(t)$ descending
+        \ForAll{$b_h^{\mathrm{relay}}$ in sorted order}
+            \State Allocate $P_{s_h}^{\mathrm{pool}}(t)$ to $b_h^{\mathrm{relay}}$: full boost, partial boost, or default power
+            \State Update final transmit power of $b_h^{\mathrm{relay}}$
+        \EndFor
     \EndFor
-    \State \textbf{Stage~2: Beam-pair local relay}
-    \ForAll{$(b_c^{\mathrm{off}},b_h^{\mathrm{relay}})\in \mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$}
-        \State Build candidate critical users; sort by relay link quality
-        \State Compute remaining relay capacity of $b_h^{\mathrm{relay}}$ (protect helper users)
-        \ForAll{$u$ in sorted order}
-            \If{capacity $\ge D_u(t)$}
-                \State Reassociate $u$ to $b_h^{\mathrm{relay}}$; update $\mathrm{sat}_u(t)$ and capacity
-            \ElsIf{remaining capacity $>0$}
-                \State Partial allocation to $u$; set remaining capacity to $0$; \textbf{break}
+    \State \textbf{Stage~2: Beam-Pair Local Relay}
+    \ForAll{$(b_c^{\mathrm{off}},s_h,b_h^{\mathrm{relay}})\in \mathcal{M}_{\mathrm{off}\to\mathrm{relay}}(t)$}
+        \State Select from $\mathcal{U}_{\mathrm{cand}}(b_h^{\mathrm{relay}},t)$ users originally served by $b_c^{\mathrm{off}}$
+        \State Compute remaining relay capacity of $b_h^{\mathrm{relay}}$ after preserving original helper users
+        \State Compute $R_{u_c,b_h^{\mathrm{relay}}}(t)$ for each candidate $u_c$ using final power of $b_h^{\mathrm{relay}}$
+        \State Sort candidate closed-beam users by $R_{u_c,b_h^{\mathrm{relay}}}(t)$ descending
+        \ForAll{$u_c$ in sorted order}
+            \If{remaining relay capacity can satisfy $D_{u_c}(t)$}
+                \State Reassociate $u_c$ to $b_h^{\mathrm{relay}}$
+                \State Update $\mathrm{sat}_{u_c}(t)$ and remaining relay capacity
+            \ElsIf{remaining relay capacity $>0$}
+                \State Assign partial capacity to $u_c$
+                \State Update $\mathrm{sat}_{u_c}(t)$; set remaining relay capacity to $0$; \textbf{break}
             \Else
                 \State \textbf{break}
             \EndIf
         \EndFor
     \EndFor
-    \State Validate single association, beam power, satellite total power, and EPFD constraints
-    \State Store $\mathbf{x}^{\mathrm{final}}(t)$, $P_{s,b}^{\mathrm{final}}(t)$, $\mathrm{sat}_u^{\mathrm{final}}(t)$
+    \State Validate single-association, beam power, satellite total power, and EPFD constraints
+    \State Store $\mathbf{x}^{\mathrm{final}}(t)$, $P_{s,b}^{\mathrm{final}}(t)$, and $\mathrm{sat}_u^{\mathrm{final}}(t)$
 \EndFor
 \end{algorithmic}
 \end{algorithm}
 
 \subsection{Complexity Discussion}
 
-The proposed method avoids solving the mixed-integer nonlinear program directly. Because $\mathcal{R}_B(t)$ is precomputed, the online procedure does not re-search critical/helpers or mappings; it performs local reassociation and relay only within predefined beam pairs.
+SAPR-R avoids directly solving the mixed-integer nonlinear optimization problem formulated in Chapter~III. Since the beam relation record $\mathcal{R}_B(t)$ is precomputed, the online procedure does not need to re-identify the critical satellite, helper satellites, or beam-pair mappings in each time slot. The online computation is therefore limited to candidate construction, local sorting, power allocation, and sequential reassociation within predefined beam pairs.
 
-Let $K_t^{\mathrm{rel}}$ and $K_t^{\mathrm{relay}}$ denote the numbers of SAHR helper candidates and BPLR critical candidates in time slot $t$. In Algorithm~\ref{alg:ch4_sapr}, building candidates and computing released power are linear in $K_t^{\mathrm{rel}}$, and sorting dominates:
+Let $K_t^{\mathrm{SAHR}}$ denote the number of candidate helper users considered in SAHR at time slot $t$, and let $K_t^{\mathrm{BPLR}}$ denote the number of candidate closed-beam users considered in BPLR. In the SAHR stage, candidate construction and released-power computation are linear in $K_t^{\mathrm{SAHR}}$, while sorting the candidates by released power dominates the complexity:
 \begin{equation*}
-\mathcal{O}\!\bigl(K_t^{\mathrm{rel}}\log K_t^{\mathrm{rel}}\bigr).
+\mathcal{O}\!\bigl(K_t^{\mathrm{SAHR}}\log K_t^{\mathrm{SAHR}}\bigr).
 \end{equation*}
-In the BPLR stage, sorting by relay link quality and sequential allocation yield
+In the relay-beam boosting stage, let $H_t$ denote the number of helper relay beams in time slot $t$. Sorting helper relay beams by relay demand requires
 \begin{equation*}
-\mathcal{O}\!\bigl(K_t^{\mathrm{relay}}\log K_t^{\mathrm{relay}}\bigr).
+\mathcal{O}\!\bigl(H_t\log H_t\bigr).
 \end{equation*}
-Over all time slots,
+In the BPLR stage, candidate users are sorted by achievable relay service rate, and then allocated sequentially according to the remaining relay capacity. The dominant complexity is therefore
 \begin{equation*}
-\mathcal{O}\!\left(
+\mathcal{O}\!\bigl(K_t^{\mathrm{BPLR}}\log K_t^{\mathrm{BPLR}}\bigr).
+\end{equation*}
+Over all time slots, the online complexity is
+\begin{equation*}
+\begin{split}
+\mathcal{O}\!\Bigl(
 \sum_{t=1}^{T}
-K_t^{\mathrm{rel}}\log K_t^{\mathrm{rel}}
-+
-K_t^{\mathrm{relay}}\log K_t^{\mathrm{relay}}
-\right).
+\bigl(
+&K_t^{\mathrm{SAHR}}\log K_t^{\mathrm{SAHR}}
++H_t\log H_t \\
+&\qquad+ K_t^{\mathrm{BPLR}}\log K_t^{\mathrm{BPLR}}
+\bigr)
+\Bigr).
+\end{split}
 \end{equation*}
-Online decision is thus limited to local sorting and sequential allocation within precomputed beam pairs, rather than global association and continuous power optimization every time slot.
+Thus, SAPR-R reduces the online decision process to local sorting and sequential allocation within precomputed beam relations, instead of solving a global association and continuous power-control problem in every time slot.
 
 \subsection{Summary}
 
-This chapter presented SAPR-R to address the tradeoff between EPFD compliance and user satisfaction when the critical satellite approaches the protected GS. We first build time-slot beam relation records from predictable geometry and footprint overlap, then run SAHR, relay-beam boosting, and BPLR online.
+This chapter presented SAPR-R for maintaining user service under the GS EPFD constraint during critical time slots. The method first precomputes time-slot beam relation records from predictable satellite geometry, beam footprints, and beam-level EPFD information. During online operation, SAPR-R applies SAHR, helper relay beam boosting, and BPLR in sequence.
 
-The staged design decouples user association and beam power allocation into local steps: critical safe beams release helper power; helper relay beams receive extra transmit power by relay demand; and closed-beam users are served within beam pairs. The method improves total user satisfaction during critical periods while satisfying the EPFD constraint.
+The staged design separates the original coupled problem into local decisions. SAHR uses critical safe beams to take over selected helper users and release helper satellite power. Helper relay beam boosting allocates the available relay power budget according to relay demand. BPLR then reassociates closed-beam users to feasible helper relay beams within predefined beam pairs. In this way, SAPR-R improves user satisfaction during critical periods while satisfying the EPFD constraint.
