@@ -167,7 +167,7 @@ end
 if ~exist('evalEpfdThr_dB_Matrix', 'var')
     evalEpfdThr_dB_Matrix = [-173.4, -169, -164.5, -160.0];
 end
-numUsersPerSatPlot = 50;
+numUsersPerSatPlot = 70;
 % --- 圖上標題（顯示在座標軸上方；設 "" 則不顯示）---
 evalFigureTitles = struct();
 evalFigureTitles.fig1 = "Aggregate EPFD Compliance over Time";
@@ -177,6 +177,7 @@ evalFigureTitles.fig4 = sprintf("Number of Relayed Critical Users under %d User 
 evalFigureTitles.fig5 = sprintf("Satisfaction CDF at Worst EPFD Slot under %d User Loads", numUsersPerSatPlot);
 evalFigureTitles.fig6 = sprintf("SAPR-R Average User Satisfaction under %d User Loads", numUsersPerSatPlot);
 evalFigureTitleFontSize = 13;
+evalLegendLocation = 'southeast';
 fprintf('Evaluation: read/write tag U%d (*_U%d_*.xlsx / figures)\n', ...
     numUsersPerSatPlot, numUsersPerSatPlot);
 evalPlotParams = evalEnv.params;
@@ -216,7 +217,6 @@ PlotFullPowerSweepClosedCriticalBeamsVsTime(root, optsFig2);
 
 % --- 圖三：四方法比較（P03_S49 平均 user 滿意度 vs 時間）；t=0 同圖一 ---
 % 單獨重跑本 cell 時，先依 numUsersPerSatPlot 重建 excel 路徑（避免 U30/U50 混用）。
-evalExcelPaths = resolveEvalExcelPathsLocal(file_path, numUsersPerSatPlot);
 assertFig3ExcelPathsMatchPlotTag(numUsersPerSatPlot, ...
     {evalExcelPaths.backoffOnly, evalExcelPaths.relayOnly, ...
     evalExcelPaths.saprR, evalExcelPaths.pcTilt}, evalCriticalSat);
@@ -236,6 +236,7 @@ optsFig3.methodDefs(4) = struct('label', "SAPR-R", ...
     'excelPath', evalExcelPaths.saprR, 'sourceType', "fullpower");
 optsFig3.figureTitle = sprintf("Average User Satisfaction under %d User Loads", numUsersPerSatPlot);
 optsFig3.titleFontSize = evalFigureTitleFontSize;
+optsFig3.legendLocation = evalLegendLocation;
 optsFig3.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
     numUsersPerSatPlot, 'P03S49_AvgUserSatisfaction_4MethodCompare', '.png'));
 optsFig3.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
@@ -294,6 +295,7 @@ optsFig5.methodDefs(3) = struct('label', "SAPR-R", ...
 optsFig5.colors = [0.85 0.33 0.10; 0 0.45 0.74; 0.47 0.67 0.19];
 optsFig5.figureTitle = sprintf("Satisfaction CDF at Worst EPFD Slot under %d User Loads", numUsersPerSatPlot);
 optsFig5.titleFontSize = evalFigureTitleFontSize;
+optsFig5.legendLocation = evalLegendLocation;
 optsFig5.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
     numUsersPerSatPlot, 'P03S49_UserSatisfaction_CDF_3MethodCompare', '.png'));
 optsFig5.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
@@ -322,6 +324,7 @@ optsFig6.yAxisPercent = true;
 optsFig6.yLim = [0, 100];
 optsFig6.figureTitle = evalFigureTitles.fig6;
 optsFig6.titleFontSize = evalFigureTitleFontSize;
+optsFig6.legendLocation = evalLegendLocation;
 optsFig6.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
     numUsersPerSatPlot, 'P03S49_SAPR-R_AvgUserSatisfaction_EpfdCompare', '.png'));
 optsFig6.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...

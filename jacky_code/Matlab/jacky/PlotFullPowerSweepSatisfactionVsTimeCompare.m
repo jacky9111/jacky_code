@@ -112,9 +112,13 @@ if opts.showFigure && isgraphics(ax)
     end
     xlim(ax, win);
     ylim(ax, double(opts.yLim(:)).');
-    lg = legend(ax, 'Location', 'southeast');
+    legendLoc = 'southeast';
+    if isfield(opts, 'legendLocation') && strlength(string(opts.legendLocation)) > 0
+        legendLoc = char(string(opts.legendLocation));
+    end
+    lg = legend(ax, 'Location', legendLoc);
     lg.FontSize = 8;
-    lg.ItemTokenSize = [18, 8];
+    lg.ItemTokenSize = [14, 6];
     lg.Box = 'on';
     applyFigureTitleIfPresentLocal(ax, opts);
     hold(ax, 'off');

@@ -145,9 +145,13 @@ if opts.showFigure && isgraphics(ax)
     ylabel(ax, 'CDF', 'FontSize', 13, 'FontName', 'Times New Roman');
     ylim(ax, [0, 1]);
     applyFigureTitleIfPresentLocal(ax, opts);
-    lg = legend(ax, 'Location', 'southeast');
+    legendLoc = 'southeast';
+    if isfield(opts, 'legendLocation') && strlength(string(opts.legendLocation)) > 0
+        legendLoc = char(string(opts.legendLocation));
+    end
+    lg = legend(ax, 'Location', legendLoc);
     lg.FontSize = 8;
-    lg.ItemTokenSize = [18, 8];
+    lg.ItemTokenSize = [12, 4];
     lg.Box = 'on';
     if ~isfield(opts, 'figurePath') || strlength(string(opts.figurePath)) == 0
         opts.figurePath = fullfile(fileparts(char(string(opts.referenceExcelPath))), ...
