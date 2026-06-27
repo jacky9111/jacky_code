@@ -1,0 +1,69 @@
+%!TEX TS-program = xelatex
+%!TEX encoding = UTF-8 Unicode
+% NCU single-column thesis body (摘要～參考文獻).
+\documentclass[a4paper,12pt,oneside]{book}
+
+\usepackage{xeCJK}
+\setCJKmainfont{Microsoft JhengHei}
+\setCJKmonofont{MingLiU}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{algorithm}
+\usepackage[noEnd=false,indLines=true]{algpseudocodex}
+\usepackage{enumitem}
+\usepackage{letltxmacro}
+\usepackage[colorlinks=true,linkcolor=black,citecolor=black,filecolor=blue,urlcolor=blue,unicode]{hyperref}
+\usepackage[notbib]{tocbibind}
+\usepackage{setspace}
+\usepackage{ntu}
+
+\setmainfont{Times New Roman}
+
+\hypersetup{
+  pdfauthor={\authorEN{}},
+  pdftitle={\titleEN{}},
+  pdfsubject={NCU Thesis},
+}
+
+\input{thesis_macros.tex}
+
+\setcounter{tocdepth}{2}
+\pagestyle{plain}
+
+\begin{document}
+
+\frontmatter
+\onehalfspacing
+
+\input{abstractCH}
+\input{abstractEN}
+
+\doublespacing
+\tableofcontents
+\listoffigures
+\listoftables
+
+\mainmatter
+\doublespacing
+
+\input{references_nocite}
+
+\PaperSingleChapter{Introduction}{chapter1_content}
+\PaperSingleChapter{Related Work}{chapter2_content}
+\PaperSingleChapter{System Model and Problem Formulation}{chapter3_content}
+\PaperSingleChapter{Method}{chapter4_content}
+\PaperSingleChapter{Evaluation}{chapter5_content}
+\PaperSingleChapter{Conclusion}{chapter6_content}
+
+\backmatter
+\cleardoublepage
+\phantomsection
+\addcontentsline{toc}{chapter}{Bibliography}
+
+\bibliographystyle{ieeetr}
+\bibliography{references}
+
+\end{document}

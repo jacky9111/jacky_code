@@ -1,4 +1,4 @@
-% Thesis draft — IEEEtran two-column; chapters III--V.
+% Thesis draft — IEEEtran two-column; chapters I--VII.
 \documentclass[10pt,journal,twocolumn]{IEEEtran}
 
 \usepackage[T1]{fontenc}
@@ -27,16 +27,49 @@
 \algrenewcommand\algorithmicrequire{\textbf{Input:}}
 \algrenewcommand\algorithmicensure{\textbf{Output:}}
 
+% Page number at top-right on every page (including the title page).
+\makeatletter
+\def\ps@IEEEtitlepagestyle{%
+  \def\@oddhead{\hbox{}\hfill\thepage}%
+  \def\@evenhead{\hbox{}\hfill\thepage}%
+  \def\@oddfoot{}%
+  \def\@evenfoot{}%
+}
+\def\ps@plain{%
+  \def\@oddhead{\hbox{}\hfill\thepage}%
+  \def\@evenhead{\hbox{}\hfill\thepage}%
+  \def\@oddfoot{}%
+  \def\@evenfoot{}%
+}
+\makeatother
 \pagestyle{plain}
 
 \begin{document}
 
-\setcounter{section}{2}
+\title{EPFD-Aware Beam Reassociation for Service Recovery in Multi-Beam LEO Satellite Systems under NGSO--GSO Coexistence}
+
+\author{Chia-Yu~Hu and Guey-Yun~Chang}
+
+\maketitle
+
+\setcounter{section}{0}
 \input{references_nocite}
+\input{chapter1_content}
+\input{chapter2_content}
 \input{chapter3_content}
 \input{chapter4_content}
 \input{chapter5_content}
+\input{chapter6_content}
+\input{chapter7_content}
 
 \input{references_bibliography}
+
+\begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{Jacky}}]{Chia-Yu Hu}
+received the M.S. degree in the Department of Computer Science and Information Engineering from National Central University, Taiwan, in 2026.
+\end{IEEEbiography}
+
+\begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{GYC}}]{Guey-Yun Chang}
+received the B.S. and M.S. degrees in Computer Science and Information Engineering from National Taiwan Normal University, Taiwan, in 1995 and 1998, respectively, and the Ph.D. degree in Computer Science and Information Engineering from National Taiwan University, Taiwan, in 2005. Currently, she is a professor at the Department of Computer Science and Information Engineering, National Central University, Taiwan. Her research interests include cognitive radio networks and wireless sensor networks.
+\end{IEEEbiography}
 
 \end{document}

@@ -1,0 +1,30 @@
+% Merge degree-exam application PDF (學位考試申請).
+% Build: .\build_degree_exam.ps1
+\documentclass[a4paper]{article}
+\usepackage{pdfpages}
+\usepackage{geometry}
+\geometry{margin=0pt}
+\pagestyle{empty}
+
+\begin{document}
+
+% 1–2. Cover + formal title page (cover: doc/01_封面.pdf → merge_cover.pdf)
+\includepdf[pages=-]{merge_cover.pdf}
+\includepdf[pages=-]{thesis_02_title.pdf}
+
+% 3. Advisor recommendation letter
+\includepdf[pages=-]{doc/03_指導教授推薦函.pdf}
+
+% 4. Similarity report
+\includepdf[pages=-]{doc/學生論文比對結果報告書.pdf}
+
+% 5. Turnitin digital receipt
+\includepdf[pages=-]{doc/04_論文比對電子回條.pdf}
+
+% 6. Department review form (before Chinese abstract)
+\includepdf[pages=-]{doc/05_系所規定審核文件.pdf}
+
+% 7. Thesis body (starts with 中文摘要; no acknowledgements)
+\includepdf[pages=-]{thesis_03_content.pdf}
+
+\end{document}

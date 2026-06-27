@@ -1,0 +1,39 @@
+% Shared macros for Paper_Single (NCU thesis format).
+\graphicspath{{../論文/figures/}}
+
+\makeatletter
+\def\input@path{{../論文/}}
+\makeatother
+
+\AtBeginDocument{\setlength{\columnwidth}{\textwidth}}
+
+% Map IEEE chapter content: drop duplicate \section, promote \subsection.
+\makeatletter
+\newif\ifPS@atefirst
+\newcommand{\PaperSingleChapter}[2]{%
+  \chapter{#1}%
+  \PS@atefirsttrue
+  \LetLtxMacro\PS@saved@section\section
+  \LetLtxMacro\PS@saved@subsection\subsection
+  \RenewDocumentCommand{\section}{s o m}{%
+    \IfBooleanTF{##1}{%
+      \IfNoValueTF{##2}{\PS@saved@section*{##3}}{\PS@saved@section*[##2]{##3}}%
+    }{%
+      \ifPS@atefirst
+        \global\PS@atefirstfalse
+        \LetLtxMacro\subsection\PS@saved@section
+      \else
+        \IfNoValueTF{##2}{\PS@saved@section{##3}}{\PS@saved@section[##2]{##3}}%
+      \fi
+    }%
+  }%
+  \input{#2}%
+  \LetLtxMacro\section\PS@saved@section
+  \LetLtxMacro\subsection\PS@saved@subsection
+}
+\makeatother
+
+\floatstyle{ruled}
+\restylefloat{algorithm}
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{Output:}}

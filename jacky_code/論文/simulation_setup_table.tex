@@ -1,0 +1,49 @@
+% Simulation setup table — compile with:
+%   xelatex simulation_setup_table.tex
+% Or run: .\build_simulation_setup.ps1
+\documentclass[10pt,a4paper,fontset=none]{ctexart}
+
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{threeparttable}
+\usepackage{geometry}
+\geometry{margin=2cm}
+
+\setCJKmainfont{Microsoft JhengHei}[
+  BoldFont=Microsoft JhengHei Bold,
+  ItalicFont=Microsoft JhengHei,
+  BoldItalicFont=Microsoft JhengHei Bold
+]
+\setCJKsansfont{Microsoft JhengHei}
+\setmainfont{Times New Roman}
+
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{table}[htbp]
+\centering
+\caption{Simulation setup.}
+\label{tab:simulation_setup}
+\begin{threeparttable}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{3.4cm}>{\raggedright\arraybackslash}p{4.6cm}>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Parameter}          & \textbf{Value}                            & \textbf{Description} \\ \midrule
+LEO Constellation           & OneWeb-like                                 & Simulation setting \\
+Orbit Altitude              & 1200\,km                                    & Circular LEO orbit \\
+Orbit Plane Inclination     & $87.9^{\circ}$                              & Near-polar Walker Star \\
+Beams per Satellite         & 16                                          & Fixed Ku-band footprint layout \\
+Simulation Time Window      & 2025/12/16 12:11:00--12:13:30               & Critical observation period during the critical satellite pass \\
+Time Slot                   & 1\,s                                        & Time-step interval \\
+Number of GSO and GS        & 1                                           & Co-frequency GSO and GSO ground station \\
+GSO Location                & $(0^{\circ}\mathrm{N},\,30.6^{\circ}\mathrm{E})$ & GSO Latitude and longitude \\
+GS Location                 & $(0^{\circ}\mathrm{N},\,30.6^{\circ}\mathrm{E})$ & Same Location as the target GSO satellite \\
+Number of users               & 30, 50, 70                                  & Different user load under each LEO satellite \\
+UE Mobility                 & Static                                      & UE positions remain static \\
+\bottomrule
+\end{tabularx}
+\end{threeparttable}
+\end{table}
+
+\end{document}

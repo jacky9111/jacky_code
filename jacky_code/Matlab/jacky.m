@@ -141,7 +141,7 @@ end
 
 % 圖六 sweep（獨立；單一 U × 多 EPFD，只跑 SAPR-R）
 evalUsersPerSat_Fig6 = 70;  % 改這裡：圖六只用一個 U（畫圖時 numUsersPerSatPlot 請設相同）
-evalEpfdThr_dB_Matrix = [-173.4, -169, -164.5, -160.0];  % 幾個 EPFD → 圖六幾條線
+evalEpfdThr_dB_Matrix = [-173.4, -172.4, -171.4, -170.4];  % 幾個 EPFD → 圖六幾條線
 
 fprintf('\n===== Sweep fig.6: U%d, SAPR-R only =====\n', evalUsersPerSat_Fig6);
 evalEnvFig6 = BuildEvalEnvironmentLocal(evalCriticalSat, evalTStartStr, evalTEndStr, evalStepSec, ...
@@ -160,27 +160,42 @@ end
 
 %% ================== Evaluation（讀 Excel 畫圖；只重畫可註解掉上方 Run*）==================
 % 圖一、二預設用 SAPR-R（RelayWithMiddleSwap）；圖三用四個方法的 xlsx。
+% 單獨重跑本 cell 時，下方會補齊路徑 / evalCriticalSat / EPFD 門檻等預設值。
+if ~exist('file_path', 'var') || strlength(string(file_path)) == 0
+    file_path = "C:\Users\jacky\Desktop\jacky_code\jacky_code\";
+end
+jackyPlotDir = fullfile(file_path, 'Matlab', 'jacky');
+if isfolder(jackyPlotDir)
+    addpath(jackyPlotDir);
+end
+if ~exist('evalCriticalSat', 'var') || strlength(string(evalCriticalSat)) == 0
+    evalCriticalSat = "P03_S49";
+end
 % 只重畫 Evaluation 時，EPFD 矩陣預設如下（應與上方 sweep 一致）：
 if ~exist('evalEpfdThr_dB_Baseline', 'var')
     evalEpfdThr_dB_Baseline = -173.4;
 end
 if ~exist('evalEpfdThr_dB_Matrix', 'var')
-    evalEpfdThr_dB_Matrix = [-173.4, -169, -164.5, -160.0];
+    evalEpfdThr_dB_Matrix = [-173.4, -172.4, -171.4, -170.4];
 end
 numUsersPerSatPlot = 70;
-% --- 圖上標題（顯示在座標軸上方；設 "" 則不顯示）---
+% --- 圖上標題（生圖不顯示；標題寫在 LaTeX caption）---
 evalFigureTitles = struct();
-evalFigureTitles.fig1 = "Aggregate EPFD Compliance over Time";
-evalFigureTitles.fig2 = "Number of closed beams over time";
-evalFigureTitles.fig3 = sprintf("Average User Satisfaction under %d User Loads", numUsersPerSatPlot);
-evalFigureTitles.fig4 = sprintf("Number of Relayed Critical Users under %d User Loads", numUsersPerSatPlot);
-evalFigureTitles.fig5 = sprintf("Satisfaction CDF at Worst EPFD Slot under %d User Loads", numUsersPerSatPlot);
-evalFigureTitles.fig6 = sprintf("SAPR-R Average User Satisfaction under %d User Loads", numUsersPerSatPlot);
+evalFigureTitles.fig1 = "";
+evalFigureTitles.fig2 = "";
+evalFigureTitles.fig3 = "";
+evalFigureTitles.fig4 = "";
+evalFigureTitles.fig5 = "";
+evalFigureTitles.fig6 = "";
 evalFigureTitleFontSize = 13;
 evalLegendLocation = 'southeast';
 fprintf('Evaluation: read/write tag U%d (*_U%d_*.xlsx / figures)\n', ...
     numUsersPerSatPlot, numUsersPerSatPlot);
-evalPlotParams = evalEnv.params;
+if exist('evalEnv', 'var') && isstruct(evalEnv) && isfield(evalEnv, 'params')
+    evalEpfdThrPlot_dB = evalEnv.params.EPFD_thr_dB;
+else
+    evalEpfdThrPlot_dB = evalEpfdThr_dB_Baseline;
+end
 evalExcelPaths = resolveEvalExcelPathsLocal(file_path, numUsersPerSatPlot);
 
 % --- 圖一：關束後 EPFD vs 相對時間；t=0 = 全束開、backoff 前 EPFD 最高 slot ---
@@ -188,7 +203,7 @@ optsFig1 = struct();
 optsFig1.sweepExcelPath = evalExcelPaths.saprR;
 optsFig1.sheetName = "Slot_EPFD";
 optsFig1.plotEpfdField = "after";
-optsFig1.epfdThreshold_dB = evalPlotParams.EPFD_thr_dB;
+optsFig1.epfdThreshold_dB = evalEpfdThrPlot_dB;
 optsFig1.relTimeWindowSec = [-60, 60];
 optsFig1.yLim_dB = [-176, -173];
 optsFig1.figureTitle = evalFigureTitles.fig1;
@@ -230,11 +245,11 @@ optsFig3.methodDefs(1) = struct('label', "Beam shutdown only", ...
     'excelPath', evalExcelPaths.backoffOnly, 'sourceType', "fullpower");
 optsFig3.methodDefs(2) = struct('label', "PC + Tilt (Ren et al.)", ...
     'excelPath', evalExcelPaths.pcTilt, 'sourceType', "ku16_pc_tilt");
-optsFig3.methodDefs(3) = struct('label', "Only BPLR", ...
+optsFig3.methodDefs(3) = struct('label', "Only HBR", ...
     'excelPath', evalExcelPaths.relayOnly, 'sourceType', "fullpower");
-optsFig3.methodDefs(4) = struct('label', "SAPR-R", ...
+optsFig3.methodDefs(4) = struct('label', "EABR", ...
     'excelPath', evalExcelPaths.saprR, 'sourceType', "fullpower");
-optsFig3.figureTitle = sprintf("Average User Satisfaction under %d User Loads", numUsersPerSatPlot);
+optsFig3.figureTitle = evalFigureTitles.fig3;
 optsFig3.titleFontSize = evalFigureTitleFontSize;
 optsFig3.legendLocation = evalLegendLocation;
 optsFig3.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
@@ -262,10 +277,10 @@ optsFig4.segmentAggregate = "mean";
 optsFig4.barWidth = 1;
 optsFig4.yLabel = "Number of critical closed-beam user relays";
 optsFig4.yLim = [0, numUsersPerSatPlot];  % Y 軸上限 = 本次 sweep 每星 user 數（U30→30, U50→50）
-optsFig4.figureTitle = sprintf("Number of Relayed Critical Users under %d User Loads", numUsersPerSatPlot);
+optsFig4.figureTitle = evalFigureTitles.fig4;
 optsFig4.titleFontSize = evalFigureTitleFontSize;
-optsFig4.methodDefs(1) = struct('label', "Only BPLR", 'excelPath', evalExcelPaths.relayOnly);
-optsFig4.methodDefs(2) = struct('label', "SAPR-R", 'excelPath', evalExcelPaths.saprR);
+optsFig4.methodDefs(1) = struct('label', "Only HBR", 'excelPath', evalExcelPaths.relayOnly);
+optsFig4.methodDefs(2) = struct('label', "EABR", 'excelPath', evalExcelPaths.saprR);
 optsFig4.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
     numUsersPerSatPlot, 'P03S49_RelayUserCount_OnlyBPLR_vs_SAPR-R', '.png'));
 optsFig4.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
@@ -287,13 +302,13 @@ optsFig5.recordSatellite = evalCriticalSat;
 optsFig5.xAxisPercent = false;
 optsFig5.methodDefs(1) = struct('label', "PC + Tilt", ...
     'excelPath', evalExcelPaths.pcTilt, 'sourceType', "ku16_pc_tilt");
-optsFig5.methodDefs(2) = struct('label', "Only BPLR", ...
+optsFig5.methodDefs(2) = struct('label', "Only HBR", ...
     'excelPath', evalExcelPaths.relayOnly, 'sourceType', "fullpower");
-optsFig5.methodDefs(3) = struct('label', "SAPR-R", ...
+optsFig5.methodDefs(3) = struct('label', "EABR", ...
     'excelPath', evalExcelPaths.saprR, 'sourceType', "fullpower");
-% 圖例順序：PC+Tilt → Only BPLR → SAPR-R；顏色固定不隨繪製順序改變
+% 圖例順序：PC+Tilt → Only HBR → EABR；顏色固定不隨繪製順序改變
 optsFig5.colors = [0.85 0.33 0.10; 0 0.45 0.74; 0.47 0.67 0.19];
-optsFig5.figureTitle = sprintf("Satisfaction CDF at Worst EPFD Slot under %d User Loads", numUsersPerSatPlot);
+optsFig5.figureTitle = evalFigureTitles.fig5;
 optsFig5.titleFontSize = evalFigureTitleFontSize;
 optsFig5.legendLocation = evalLegendLocation;
 optsFig5.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...

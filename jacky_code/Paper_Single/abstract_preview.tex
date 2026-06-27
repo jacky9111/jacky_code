@@ -1,0 +1,59 @@
+% Bilingual abstract preview — compile with:
+%   xelatex abstract_preview.tex
+% Or run: .\build_abstract_preview.ps1
+\documentclass[10pt,a4paper,fontset=none]{ctexart}
+
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+% Traditional Chinese: use Windows system fonts (Fandol lacks many TC glyphs).
+\setCJKmainfont{Microsoft JhengHei}[
+  BoldFont=Microsoft JhengHei Bold,
+  ItalicFont=Microsoft JhengHei,
+  BoldItalicFont=Microsoft JhengHei Bold
+]
+\setCJKsansfont{Microsoft JhengHei}
+\setmainfont{Times New Roman}
+
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}
+  {\Large\bfseries 中文摘要}
+\end{center}
+\vspace{0.5em}
+
+近年來，非地球同步軌道（non-geostationary satellite orbit, NGSO）衛星系統，特別是低地球軌道（low Earth orbit, LEO）衛星星座，已成為未來寬頻衛星通訊與非地面網路的重要發展方向。然而，當 LEO 衛星下行傳輸與既有地球同步軌道（geostationary satellite orbit, GSO）系統共用相同或相鄰頻段時，可能對 GSO 地面站造成同頻干擾。為保護 GSO 系統，NGSO 系統必須遵守等效功率通量密度（equivalent power flux-density, EPFD）限制。當 LEO 衛星通過 GSO 地面站附近，且與 GSO 方向形成近似共線幾何時，部分高干擾風險波束可能需要被關閉以滿足 EPFD 限制。然而，波束關閉雖然能有效降低干擾，卻會使原本由關閉波束服務的使用者失去服務，進而影響 LEO 使用者的服務連續性與滿足率。
+
+為解決上述問題，本文提出 Safe-Beam Assisted Power-Release Relay（SAPR-R），一種適用於 NGSO--GSO 共存情境下多波束 LEO 衛星系統的分階段中繼式服務恢復方法。SAPR-R 利用 LEO 衛星軌道與波束覆蓋範圍可預測的特性，預先建立 critical satellite、helper satellites、closed beams、safe beams，以及 critical/helper 衛星之間的波束重疊對應關係。當 critical satellite 為滿足 EPFD 限制而關閉部分高風險波束時，SAPR-R 先透過 critical satellite 上仍可運作的 safe beams 接手部分 helper users，以釋放 helper satellite 的可用功率；接著將釋放出的功率分配給 helper relay beams，以提升其接手 closed-beam users 的能力；最後，透過 beam-pair local relay 將受 critical-beam shutdown 影響的使用者重新分配至可行的 helper relay beams，完成服務恢復。
+
+本文透過 STK 與 MATLAB 建立模擬環境，評估 SAPR-R 在 critical satellite 通過 GSO 地面站附近期間的 EPFD 合規性與使用者服務表現。模擬結果顯示，SAPR-R 能使 aggregate EPFD 維持在規範限制以下，並相較於 baseline methods 達到更高的平均使用者滿足率。此外，SAPR-R 能提升成功被 helper relay beams 接手的 closed-beam users 數量，並降低低滿足率使用者的比例。整體而言，SAPR-R 能在滿足 EPFD 限制的同時，有效改善 LEO 使用者的服務連續性，並避免在每個 time slot 中求解高複雜度的全域最佳化問題，提供一種兼具實用性與可行性的中繼式服務恢復方法。
+
+\vspace{0.8em}
+\noindent\textbf{關鍵詞：}NGSO--GSO 共存、EPFD、LEO 衛星、多波束衛星系統、服務恢復、中繼、非地面網路、SAPR-R
+
+\vspace{2em}
+
+\begin{center}
+  {\Large\bfseries Abstract}
+\end{center}
+\vspace{0.5em}
+
+In recent years, non-geostationary satellite orbit (NGSO) systems, especially low Earth orbit (LEO) satellite constellations, have become an important enabler for future broadband satellite communications and non-terrestrial networks. However, when LEO downlink transmissions operate in the same or adjacent frequency bands as existing geostationary satellite orbit (GSO) systems, they may cause co-channel interference to GSO ground stations. To protect GSO systems, NGSO systems must comply with equivalent power flux-density (EPFD) limits. When an LEO satellite passes near a GSO ground station and forms a near-inline geometry with respect to the GSO direction, some high-risk beams may need to be shut down to satisfy the EPFD limit. Although beam shutdown can effectively reduce interference, it also interrupts the service of users originally served by the closed beams and degrades LEO user service continuity and satisfaction.
+
+To address this issue, this thesis proposes Safe-Beam Assisted Power-Release Relay (SAPR-R), a staged relay-based service recovery method for multi-beam LEO satellite systems under NGSO--GSO coexistence. SAPR-R exploits the predictable motion of LEO satellites and beam footprints to precompute the critical satellite, helper satellites, closed beams, safe beams, and beam overlap mappings between critical and helper satellites. When the critical satellite shuts down high-risk beams to satisfy the EPFD limit, SAPR-R first lets safe beams on the critical satellite take over selected helper users to release available power on the helper satellite; then allocates the released power to helper relay beams to improve their capability to serve closed-beam users; finally, it reassociates affected users to feasible helper relay beams through beam-pair local relay to complete service recovery.
+
+An STK--MATLAB simulation framework is developed to evaluate the EPFD compliance and user service performance of SAPR-R during the critical satellite pass near the GSO ground station. The results show that SAPR-R keeps the aggregate EPFD below the regulatory limit and achieves higher average user satisfaction than baseline methods. Moreover, SAPR-R increases the number of closed-beam users successfully served by helper relay beams and reduces the proportion of low-satisfaction users. Overall, SAPR-R improves LEO user service continuity while maintaining EPFD compliance, without solving a high-complexity global optimization problem in every time slot, thereby providing a practical and feasible relay-based service recovery approach.
+
+\vspace{0.8em}
+\noindent\textbf{Keywords:} NGSO--GSO coexistence, EPFD, LEO satellites, multi-beam satellite systems, service recovery, relay, non-terrestrial networks, SAPR-R
+
+% Simulation setup table (temporarily hidden)
+% \begin{table}[htbp]
+% \centering
+% \caption{Simulation setup.}
+% \label{tab:simulation_setup}
+% ...
+
+\end{document}

@@ -60,7 +60,7 @@ switch plotField
         epfdLineName = 'Aggregate EPFD (before backoff)';
     case "after"
         yEpfd = double(T.gs_epfd_after_dB);
-        epfdLineName = 'SAPR-R';
+        epfdLineName = 'EABR';
     otherwise
         error('opts.plotEpfdField must be ''before'' or ''after''.');
 end
@@ -98,9 +98,9 @@ if opts.showFigure
     fig = figure('Name', 'GS EPFD vs worst EPFD slot (t = 0)', 'Color', 'w');
     ax = axes('Parent', fig);
     hold(ax, 'on');
-    lineStyle = linePlotStylePresetLocal(1, [0 0 0]);
     yline(ax, thr_dB, 'r-', 'LineWidth', 1.8, 'DisplayName', sprintf('EPFD Constraint'));
-    plotStyledLineLocal(ax, tPlot, yPlot, 1, lineStyle, 1.8, epfdLineName);
+    plot(ax, tPlot, yPlot, 'Color', [0 0 0], 'LineStyle', '-', 'LineWidth', 1.8, ...
+        'DisplayName', epfdLineName);
     grid(ax, 'on');
     xlabel(ax, 'Time Offset from Worst EPFD Slot (s)');
     ylabel(ax, 'Aggregate EPFD (dBW/m²/40 kHz)');

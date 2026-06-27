@@ -1,0 +1,72 @@
+%!TEX TS-program = xelatex
+% Full thesis with cover + forms — same structure as senior Paper_Single.tex.
+\documentclass[a4paper,12pt,oneside]{book}
+
+\usepackage{xeCJK}
+\setCJKmainfont{Microsoft JhengHei}
+\setCJKmonofont{MingLiU}
+\usepackage{pdfpages}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{algorithm}
+\usepackage[noEnd=false,indLines=true]{algpseudocodex}
+\usepackage{enumitem}
+\usepackage{letltxmacro}
+\usepackage[colorlinks=true,linkcolor=black,citecolor=black,filecolor=blue,urlcolor=blue,unicode]{hyperref}
+\usepackage[notbib]{tocbibind}
+\usepackage{setspace}
+\usepackage{ntu}
+
+\setmainfont{Times New Roman}
+\hypersetup{
+  pdfauthor={\authorEN{}},
+  pdftitle={\titleEN{}},
+  pdfsubject={NCU Thesis},
+}
+
+\input{thesis_macros.tex}
+\setcounter{tocdepth}{2}
+\pagestyle{plain}
+
+\begin{document}
+
+\includepdf[pages=-]{merge_cover.pdf}
+\maketitle
+
+% Graduation forms — add PDFs under doc/graduate_version/ and uncomment as needed.
+% \includepdf[pages=-]{doc/graduate_version/1_中大學位論文授權書.pdf}
+% \includepdf[pages=-]{doc/graduate_version/2_國家圖書館學位論文延後公開申請書.pdf}
+% \includepdf[pages=-]{doc/graduate_version/3_國立中央大學碩士班研究生論文指導教授推薦書_signed.pdf}
+% \includepdf[pages=-]{doc/graduate_version/4_口試委員審定書.pdf}
+
+\frontmatter
+\onehalfspacing
+\input{abstractCH}
+\input{abstractEN}
+
+\doublespacing
+\tableofcontents
+\listoffigures
+\listoftables
+
+\mainmatter
+\doublespacing
+\input{references_nocite}
+
+\PaperSingleChapter{Introduction}{chapter1_content}
+\PaperSingleChapter{Related Work}{chapter2_content}
+\PaperSingleChapter{System Model and Problem Formulation}{chapter3_content}
+\PaperSingleChapter{Method}{chapter4_content}
+\PaperSingleChapter{Evaluation}{chapter5_content}
+\PaperSingleChapter{Conclusion}{chapter6_content}
+
+\backmatter
+\cleardoublepage
+\phantomsection
+\addcontentsline{toc}{chapter}{Bibliography}
+\bibliographystyle{ieeetr}
+\bibliography{references}
+
+\end{document}

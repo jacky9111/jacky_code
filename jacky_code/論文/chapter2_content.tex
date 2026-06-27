@@ -1,0 +1,33 @@
+% Chapter 2 content — included by main.tex; compile chapter2.tex for preview.
+\section{Related Work}
+\label{sec:related_work}
+
+Existing studies on NGSO--GSO coexistence have investigated several interference mitigation strategies for reducing NGSO downlink interference toward GSO systems. In this chapter, related works are reviewed in three categories: progressive pitch and beam shutdown, joint power and tilt control, and beamforming-based interference mitigation. The characteristics and limitations of these methods are discussed to clarify the motivation of this work.
+
+\subsection{Progressive Pitch and Beam Shutdown}
+\label{subsec:progressive_pitch}
+
+Progressive pitch is one representative attitude-based interference avoidance strategy for NGSO--GSO coexistence. In this approach, the LEO satellite gradually adjusts its attitude when it approaches low-latitude regions, where its downlink direction may become close to the line-of-sight direction from the GSO ground station to the target GSO satellite. By changing the satellite pointing direction, the LEO downlink beam can be shifted away from this line-of-sight direction, thereby increasing the angular separation observed at the GSO ground station. When attitude adjustment alone is insufficient to satisfy the interference constraint, some high-risk user beams may be shut down to further reduce interference.
+
+Li et al.~\cite{li2021progressive} studied the progressive pitch strategy of the OneWeb constellation. Their results show that progressive pitch can effectively reduce interference to GSO systems in many regions. However, the combination of satellite tilting and partial beam shutdown may also reduce coverage continuity and create service blind areas during certain periods. This indicates that interference avoidance based only on attitude adjustment and beam shutdown may still affect the service availability of LEO users.
+
+\subsection{Joint Power and Tilt Control}
+\label{subsec:joint_power_tilt}
+
+Another type of interference mitigation method combines transmit power control with satellite tilt control. Power control reduces the transmit power of LEO satellites when they approach high-risk regions near the GSO ground station, so that the interference received at the GSO ground station can be lowered. Compared with progressive pitch methods that follow a predefined attitude adjustment strategy, joint power and tilt control formulates the mitigation process as an optimization problem. The transmit power and tilt angle of LEO satellites are jointly adjusted to satisfy the EPFD constraint while improving user demand satisfaction.
+
+Jalali et al.~\cite{jalali2023joint} proposed a joint power and tilt control method for NGSO--GSO interference mitigation. Their method optimizes LEO transmit power and satellite tilt angle under the aggregate EPFD constraint. Compared with direct beam shutdown, this approach provides a more flexible way to reduce interference and preserve user service. However, when the interference constraint is strict, the transmit power of critical satellites may still need to be significantly reduced, which can limit the achievable service quality of LEO users during critical periods.
+
+\subsection{Beamforming and Beam Steering}
+\label{subsec:beamforming}
+
+Beamforming-based methods provide another interference mitigation direction for NGSO satellite systems equipped with phased-array antennas. Instead of only reducing transmit power or adjusting satellite attitude, beamforming controls antenna weight vectors to steer signals toward intended LEO users and suppress emissions toward GSO ground stations. In this way, the NGSO system can improve its downlink transmission while reducing co-channel interference to the GSO system.
+
+Jalali et al.~\cite{jalali2024beamforming} investigated downlink beamforming strategies for interference-aware NGSO satellite systems. They proposed an aggregate interference-constrained beamforming method to limit the interference received at GSO ground stations while satisfying the service requirements of LEO users. This approach shows that beamforming can be an effective interference mitigation technique for advanced NGSO payloads. However, beamforming generally requires phased-array antennas, channel state information or average channel state information, and higher computational complexity. Since this work focuses on a fixed multi-beam LEO system, beamforming-based control is not considered in this thesis.
+
+\subsection{Summary and Research Gap}
+\label{subsec:research_gap}
+
+The above studies show that NGSO--GSO interference can be mitigated through satellite attitude adjustment, transmit power control, beam shutdown, or antenna-domain beamforming. These methods reduce the interference received at GSO ground stations from different perspectives. However, when mitigation actions reduce the available resources of LEO satellites, the service quality of LEO users may still be affected. In particular, users originally served by beams that are shut down during critical periods require additional service recovery support.
+
+Existing studies have not addressed how neighboring LEO satellite beams can be used to recover the service of users affected by critical-beam shutdown under the GS EPFD constraint. This motivates the proposed EABR framework, which exploits predictable coverage overlap among neighboring LEO satellites for service recovery while maintaining EPFD compliance.
