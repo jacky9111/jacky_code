@@ -325,19 +325,19 @@ BEGIN Scenario
             BEGIN Class
                 Name		 Satellite
                 BEGIN Favorite
-                    Type		 Graph
-                    BaseDir		 Install
-                    Style		 Lighting Times
-                END Favorite
-                BEGIN Favorite
-                    Type		 Report
-                    BaseDir		 Install
-                    Style		 Lighting Times
-                END Favorite
-                BEGIN Favorite
                     Type		 Report
                     BaseDir		 Install
                     Style		 LLA Position
+                END Favorite
+                BEGIN Favorite
+                    Type		 Report
+                    BaseDir		 Install
+                    Style		 Lighting Times
+                END Favorite
+                BEGIN Favorite
+                    Type		 Graph
+                    BaseDir		 Install
+                    Style		 Lighting Times
                 END Favorite
             END Class
         END ReportFavorites
@@ -1544,7 +1544,7 @@ BEGIN Scenario
 
                 StartTime		 16 Dec 2025 12:10:03.000000000
                 EndTime		 17 Dec 2025 12:10:03.000000000
-                CurrentTime		 16 Dec 2025 12:12:57.000000000
+                CurrentTime		 16 Dec 2025 12:10:03.000000000
                 Direction		 Forward
                 UpdateDelta		 10
                 RefreshDelta		 0.010000

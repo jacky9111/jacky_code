@@ -1,7 +1,7 @@
 %% 重置 Command window 與 Workspace
 clear;
 clc;
-
+hello world 
 %% 與STK連線
 disp("連接STK");
 con = actxGetRunningServer('STK12.application');
@@ -373,6 +373,106 @@ if nEpfdFig6 > 0
 else
     warning('jacky:MissingFig6Excel', 'Skip fig.6: no SAPR-R Excel for evalEpfdThr_dB_Matrix.');
 end
+
+
+
+%% ================== oneweb-like 用matlab模擬密集的場景 ==================
+% 純 MATLAB（不用 STK）：5 軌 × 10 星、-3 dB 16 beam、同軌/鄰軌各 50% overlap。
+% Ideal GSO 與 GS inline（赤道）。GS 在中軌 S05 正下方。
+%
+% 實驗目的：
+% 比較不同 graph-based edge selection 方法在相同 candidate graphs、相同 beam capacity、
+% 相同 EPFD constraint、相同 user distribution 下的 service recovery performance。
+%
+% 比較方法（四種）：
+%   1. Proposed Dynamic-Score Iterative Selection — 每輪重算 edge score（本文方法）
+%   2. Initial-Score Iterative Selection — score 只在 procedure 開始算一次，固定排序
+%   3. Max-User Iterative Selection — 每輪選可 reassociate 最多 users 的 edge
+%   4. Random Feasible Iterative Selection — 每輪隨機選可行 edge（30 次平均，固定 seed）
+%
+% User：100 fixed users，D_u = 25 Mbps；priority 50%%/30%%/20%% → weight 1/2/3
+% 輸出：graph_selection_comparison_results.mat/.csv
+%       fig_avg_satisfaction_graph_selection.png
+%       fig_priority_weighted_recovery_graph_selection.png
+if ~exist('file_path', 'var') || strlength(string(file_path)) == 0
+    file_path = "C:\Users\jacky\Desktop\jacky_code\jacky_code\";
+end
+addpath(fullfile(file_path, 'Matlab', 'jacky'));
+addpath(fullfile(file_path, 'Matlab', 'powertilt'));
+if ~exist('alt_km', 'var') || ~isfinite(alt_km)
+    alt_km = 1200;
+end
+if ~exist('evalGsLon_deg', 'var') || ~isfinite(evalGsLon_deg)
+    evalGsLon_deg = 120.4;
+end
+if ~exist('evalEpfdThr_dB_Baseline', 'var') || ~isfinite(evalEpfdThr_dB_Baseline)
+    evalEpfdThr_dB_Baseline = -173.4;
+end
+if ~exist('evalFullBeamPower_W', 'var') || ~isfinite(evalFullBeamPower_W)
+    evalFullBeamPower_W = 1.05;
+end
+
+optsDenseBase = struct();
+optsDenseBase.alt_km = alt_km;
+optsDenseBase.nOrbit = 5;
+optsDenseBase.nSatPerOrbit = 10;
+optsDenseBase.gsLat_deg = 0;
+optsDenseBase.orbitLon_deg = evalGsLon_deg;   % 中軌（P03）地面軌跡經度
+optsDenseBase.gsRelLon_deg = 0;               % GS 相對中軌的經度差 (deg)；0=在軌道正下方
+% GS 絕對經度 = orbitLon_deg + gsRelLon_deg；Ideal GSO 與 GS inline
+optsDenseBase.beamHalfEW_deg = 24.5;          % -3 dB
+optsDenseBase.beamHalfNS_total_deg = 25.0;    % -3 dB total NS half-angle (16 beams)
+optsDenseBase.fullBeamPower_W = evalFullBeamPower_W;
+optsDenseBase.epfdThr_dB = evalEpfdThr_dB_Baseline;
+optsDenseBase.showFigure = true;
+optsDenseBase.gsAnchorSatIdx = 5;             % 中軌第 5 顆
+
+% GS 在中軌第 5 顆衛星正下方
+optsDenseUnderS5 = optsDenseBase;
+optsDenseUnderS5.gsPlacement = 'under_sat';
+optsDenseUnderS5.figurePath = char(fullfile(file_path, 'Matlab_data', ...
+    'DenseOverlap_EPFD_Shutdown_GS_under_S05.png'));
+denseEpfdResultUnderS5 = RunDenseOverlapEpfdShutdownSnapshotLocal(optsDenseUnderS5);
+fprintf('Dense snapshot (GS under S05): nCritical=%d -> %s\n', ...
+    denseEpfdResultUnderS5.nCritical, optsDenseUnderS5.figurePath);
+
+% --- Graph-based edge selection comparison (Ch.4) ---
+% 實驗目的：在相同 candidate graphs、beam capacity、EPFD constraint、user distribution 下，
+% 比較四種 SBR/HBR edge selection 的 service recovery performance。
+% 方法：Proposed Dynamic-Score | Initial-Score | Max-User | Random Feasible (30 runs)
+% Users: 100 fixed, D_u=25 Mbps; priority 50%% low / 30%% med / 20%% high (fixed seeds)
+optsGraphSel = struct();
+optsGraphSel.file_path = file_path;
+optsGraphSel.alt_km = alt_km;
+optsGraphSel.orbitLon_deg = evalGsLon_deg;
+optsGraphSel.gsRelLon_deg = 0;
+optsGraphSel.gsPlacement = 'under_sat';
+optsGraphSel.gsAnchorSatIdx = 5;
+optsGraphSel.fullBeamPower_W = evalFullBeamPower_W;
+optsGraphSel.epfdThr_dB = evalEpfdThr_dB_Baseline;
+optsGraphSel.nUsers = 100;
+optsGraphSel.userDemand_Mbps = 25;
+optsGraphSel.userSeed = 42;
+optsGraphSel.prioritySeed = 42;
+optsGraphSel.userSpreadLat_deg = 8;
+optsGraphSel.userSpreadLon_deg = 8;
+optsGraphSel.randomRuns = 30;
+optsGraphSel.randomSeed = 2026;
+optsGraphSel.showFigures = true;
+graphSelResult = RunGraphSelectionComparisonDenseLocal(optsGraphSel);
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
