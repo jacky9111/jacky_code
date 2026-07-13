@@ -11,6 +11,8 @@ snapOpts = struct();
 snapOpts.alt_km = scenario.alt_km;
 snapOpts.nOrbit = scenario.nOrbit;
 snapOpts.nSatPerOrbit = scenario.nSatPerOrbit;
+snapOpts.satSpacingMode = scenario.satSpacingMode;
+snapOpts.starlinkDensityTotalSats = scenario.starlinkDensityTotalSats;
 snapOpts.gsLat_deg = scenario.gsLat_deg;
 snapOpts.orbitLon_deg = scenario.orbitLon_deg;
 snapOpts.gsRelLon_deg = scenario.gsRelLon_deg;
@@ -42,11 +44,9 @@ end
 criticalSatMask = any(shutOffMat, 2);
 criticalSatIdx = find(criticalSatMask);
 
-% Users near GS.
-rng(scenario.userSeed);
+% User placement.
 nUser = scenario.nUsers;
-userLat = scenario.gsLat_deg + (rand(nUser, 1) - 0.5) * scenario.userSpreadLat_deg;
-userLon = scenario.gsLon_deg + (rand(nUser, 1) - 0.5) * scenario.userSpreadLon_deg;
+[userLat, userLon, userPlacementSatIdx] = generateDenseGraphUsersLocal(scenario, satGeom);
 P_users_km = zeros(3, nUser);
 for iu = 1:nUser
     P_users_km(:, iu) = graphRecoverySharedLocal('groundxyz', userLat(iu), userLon(iu), 0);
@@ -66,15 +66,50 @@ priorityWeight(perm(nLow + (1:nMed))) = 2;
 priorityClass(perm(nLow + nMed + 1:end)) = "high";
 priorityWeight(perm(nLow + nMed + 1:end)) = 3;
 
+demandMode = "priority_tier";
+if isfield(scenario, 'userDemandMode') && strlength(string(scenario.userDemandMode)) > 0
+    demandMode = lower(string(scenario.userDemandMode));
+end
+if demandMode == "random_uniform"
+    rng(scenario.userDemandSeed);
+    dMin = scenario.userDemandMin_Mbps;
+    dMax = scenario.userDemandMax_Mbps;
+    userDemand_Mbps_vec = dMin + (dMax - dMin) * rand(nUser, 1);
+else
+    demandLow_Mbps = scenario.userDemandLow_Mbps;
+    demandMed_Mbps = scenario.userDemandMed_Mbps;
+    demandHigh_Mbps = scenario.userDemandHigh_Mbps;
+    userDemand_Mbps_vec = zeros(nUser, 1);
+    for iu = 1:nUser
+        switch priorityClass(iu)
+            case "low"
+                userDemand_Mbps_vec(iu) = demandLow_Mbps;
+            case "medium"
+                userDemand_Mbps_vec(iu) = demandMed_Mbps;
+            otherwise
+                userDemand_Mbps_vec(iu) = demandHigh_Mbps;
+        end
+    end
+end
+userDemand_bps = userDemand_Mbps_vec * 1e6;
+
 % Pre-shutdown home association (include shut beams) for closed-beam user definition.
 [userHomeSat, userHomeBeam] = assignUsersToBeamsGraphLocal( ...
     satGeom, P_users_km, scenario.beamHalfEW_deg, beamHalfNS_deg, false(size(shutOffMat)));
+if any(userPlacementSatIdx > 0) && ~isempty(criticalSatIdx)
+    [userHomeSat, userHomeBeam] = forceCriticalGeneratedUsersHomeLocal( ...
+        userHomeSat, userHomeBeam, userPlacementSatIdx, criticalSatIdx, ...
+        satGeom, P_users_km, scenario.beamHalfEW_deg, beamHalfNS_deg);
+end
 
-userDemand_bps = scenario.userDemand_Mbps * 1e6 * ones(nUser, 1);
 userServiceSat = userHomeSat;
 userServiceBeam = userHomeBeam;
 closedBeamUserMask = false(nUser, 1);
+criticalSatUserMask = false(nUser, 1);
 for iu = 1:nUser
+  if userHomeSat(iu) >= 1 && ismember(userHomeSat(iu), criticalSatIdx)
+    criticalSatUserMask(iu) = true;
+  end
   if userHomeSat(iu) >= 1 && userHomeBeam(iu) >= 1
     if shutOffMat(userHomeSat(iu), userHomeBeam(iu))
       closedBeamUserMask(iu) = true;
@@ -95,6 +130,10 @@ scenario.shutOffMat = shutOffMat;
 scenario.criticalSatIdx = criticalSatIdx;
 scenario.nSat = nSat;
 scenario.nBeam = Nbeam;
+scenario.satSpacingMode = scenario.satSpacingMode;
+scenario.starlinkDensityTotalSats = scenario.starlinkDensityTotalSats;
+scenario.spacingAlong_km = snap.spacingAlong_km;
+scenario.spacingCross_km = snap.spacingCross_km;
 scenario.beamHalfNS_deg = beamHalfNS_deg;
 scenario.beamCapacity_Mbps = scenario.beamCapacity_Mbps;
 scenario.beamHalfEW_deg = scenario.beamHalfEW_deg;
@@ -102,7 +141,8 @@ scenario.fullBeamPower_W = scenario.fullBeamPower_W;
 scenario.maxBeamPower_W = scenario.maxBeamPower_W;
 scenario.params = scenario.params;
 scenario.alt_km = scenario.alt_km;
-scenario.userDemand_Mbps = scenario.userDemand_Mbps;
+scenario.userDemand_Mbps = mean(userDemand_Mbps_vec);
+scenario.userDemand_Mbps_vec = userDemand_Mbps_vec;
 scenario.gsLat_deg = scenario.gsLat_deg;
 scenario.userLon = userLon;
 scenario.userHomeSat = userHomeSat;
@@ -110,9 +150,11 @@ scenario.userHomeBeam = userHomeBeam;
 scenario.userServiceSat = userServiceSat;
 scenario.userServiceBeam = userServiceBeam;
 scenario.closedBeamUserMask = closedBeamUserMask;
+scenario.criticalSatUserMask = criticalSatUserMask;
 scenario.priorityClass = priorityClass;
 scenario.priorityWeight = priorityWeight;
 scenario.userDemand_bps = userDemand_bps;
+scenario.highPriorityRecoveryThreshold = scenario.highPriorityRecoveryThreshold;
 scenario.sbrEdges = sbrEdges;
 scenario.hbrEdges = hbrEdges;
 scenario.Tbeam = snap.Tbeam;
@@ -122,12 +164,57 @@ scenario.userLat = userLat;
 scenario.P_users_km = P_users_km;
 scenario.userSeed = scenario.userSeed;
 scenario.prioritySeed = scenario.prioritySeed;
+scenario.userPlacementMode = scenario.userPlacementMode;
+scenario.userPlacementSatIdx = userPlacementSatIdx;
+scenario.userPlacementNearestSatCount = scenario.userPlacementNearestSatCount;
+scenario.recoveryPowerPoolMode = scenario.recoveryPowerPoolMode;
+end
+
+function [userLat, userLon, userPlacementSatIdx] = generateDenseGraphUsersLocal(scenario, satGeom)
+rng(scenario.userSeed);
+nUser = scenario.nUsers;
+mode = lower(string(scenario.userPlacementMode));
+userPlacementSatIdx = zeros(nUser, 1);
+
+switch mode
+    case "nearest_sat_footprints"
+        nPick = min(max(round(scenario.userPlacementNearestSatCount), 1), numel(satGeom));
+        dLat_km = ([satGeom.subLat]' - scenario.gsLat_deg) * 111.32;
+        dLon_km = ([satGeom.subLon]' - scenario.gsLon_deg) * 111.32 * max(cosd(scenario.gsLat_deg), 1e-6);
+        [~, ord] = sort(hypot(dLat_km, dLon_km), 'ascend');
+        selectedSatIdx = ord(1:nPick);
+
+        halfNS_km = scenario.alt_km * tand(scenario.beamHalfNS_total_deg);
+        halfEW_km = scenario.alt_km * tand(scenario.beamHalfEW_deg);
+        satOrder = selectedSatIdx(mod((0:nUser-1)', nPick) + 1);
+        satOrder = satOrder(randperm(nUser));
+
+        userLat = zeros(nUser, 1);
+        userLon = zeros(nUser, 1);
+        for iu = 1:nUser
+            iSat = satOrder(iu);
+            dLat_deg = halfNS_km / 111.32;
+            lonScale = max(cosd(satGeom(iSat).subLat), 1e-6);
+            dLon_deg = halfEW_km / (111.32 * lonScale);
+            userLat(iu) = satGeom(iSat).subLat + (rand() - 0.5) * 2 * dLat_deg;
+            userLon(iu) = satGeom(iSat).subLon + (rand() - 0.5) * 2 * dLon_deg;
+            userPlacementSatIdx(iu) = iSat;
+        end
+
+    otherwise
+        userLat = scenario.gsLat_deg + (rand(nUser, 1) - 0.5) * scenario.userSpreadLat_deg;
+        userLon = scenario.gsLon_deg + (rand(nUser, 1) - 0.5) * scenario.userSpreadLon_deg;
+end
 end
 
 function opts = applyScenarioDefaultsLocal(opts)
 if ~isfield(opts, 'alt_km'), opts.alt_km = 1200; end
 if ~isfield(opts, 'nOrbit'), opts.nOrbit = 5; end
 if ~isfield(opts, 'nSatPerOrbit'), opts.nSatPerOrbit = 10; end
+if ~isfield(opts, 'satSpacingMode') || strlength(string(opts.satSpacingMode)) == 0
+    opts.satSpacingMode = 'footprint_overlap';
+end
+if ~isfield(opts, 'starlinkDensityTotalSats'), opts.starlinkDensityTotalSats = 1584; end
 if ~isfield(opts, 'gsLat_deg'), opts.gsLat_deg = 0; end
 if ~isfield(opts, 'orbitLon_deg'), opts.orbitLon_deg = 120.4; end
 if ~isfield(opts, 'gsRelLon_deg'), opts.gsRelLon_deg = 0; end
@@ -141,10 +228,27 @@ if ~isfield(opts, 'beamCapacity_Mbps'), opts.beamCapacity_Mbps = opts.fullBeamPo
 if ~isfield(opts, 'epfdThr_dB'), opts.epfdThr_dB = -173.4; end
 if ~isfield(opts, 'nUsers'), opts.nUsers = 100; end
 if ~isfield(opts, 'userDemand_Mbps'), opts.userDemand_Mbps = 25; end
+if ~isfield(opts, 'userDemandLow_Mbps'), opts.userDemandLow_Mbps = 25; end
+if ~isfield(opts, 'userDemandMed_Mbps'), opts.userDemandMed_Mbps = 50; end
+if ~isfield(opts, 'userDemandHigh_Mbps'), opts.userDemandHigh_Mbps = 100; end
+if ~isfield(opts, 'userDemandMode') || strlength(string(opts.userDemandMode)) == 0
+    opts.userDemandMode = 'priority_tier';
+end
+if ~isfield(opts, 'userDemandMin_Mbps'), opts.userDemandMin_Mbps = 25; end
+if ~isfield(opts, 'userDemandMax_Mbps'), opts.userDemandMax_Mbps = 100; end
+if ~isfield(opts, 'userDemandSeed'), opts.userDemandSeed = opts.prioritySeed; end
+if ~isfield(opts, 'highPriorityRecoveryThreshold'), opts.highPriorityRecoveryThreshold = 0.8; end
 if ~isfield(opts, 'userSeed'), opts.userSeed = 42; end
 if ~isfield(opts, 'prioritySeed'), opts.prioritySeed = 42; end
+if ~isfield(opts, 'userPlacementMode') || strlength(string(opts.userPlacementMode)) == 0
+    opts.userPlacementMode = 'gs_cluster';
+end
+if ~isfield(opts, 'userPlacementNearestSatCount'), opts.userPlacementNearestSatCount = 9; end
 if ~isfield(opts, 'userSpreadLat_deg'), opts.userSpreadLat_deg = 8; end
 if ~isfield(opts, 'userSpreadLon_deg'), opts.userSpreadLon_deg = 8; end
+if ~isfield(opts, 'recoveryPowerPoolMode') || strlength(string(opts.recoveryPowerPoolMode)) == 0
+    opts.recoveryPowerPoolMode = 'per_sat';
+end
 if ~isfield(opts, 'params') || isempty(opts.params)
     opts.params = ku_epfd_params();
     opts.params.useEIRPDensityModel = false;
@@ -230,6 +334,43 @@ for iu = 1:nUser
     end
     userSat(iu) = bestSat;
     userBeam(iu) = bestBeam;
+end
+end
+
+function [userSat, userBeam] = forceCriticalGeneratedUsersHomeLocal( ...
+    userSat, userBeam, userPlacementSatIdx, criticalSatIdx, satGeom, P_users_km, ...
+    beamHalfEW_deg, beamHalfNS_deg)
+criticalMask = false(numel(satGeom), 1);
+criticalMask(criticalSatIdx) = true;
+for iu = 1:numel(userSat)
+    iGenSat = userPlacementSatIdx(iu);
+    if iGenSat < 1 || iGenSat > numel(satGeom) || ~criticalMask(iGenSat)
+        continue;
+    end
+    bHome = assignUserToBeamOnSatGraphLocal( ...
+        satGeom, P_users_km(:, iu), iGenSat, beamHalfEW_deg, beamHalfNS_deg);
+    if bHome > 0
+        userSat(iu) = iGenSat;
+        userBeam(iu) = bHome;
+    end
+end
+end
+
+function bHome = assignUserToBeamOnSatGraphLocal(satGeom, P_user_km, iSat, beamHalfEW_deg, beamHalfNS_deg)
+bHome = 0;
+bestOffAxis = inf;
+for b = 1:size(satGeom(iSat).b_all, 2)
+    if ~graphRecoverySharedLocal('usercovered', satGeom(iSat), b, P_user_km, ...
+            beamHalfEW_deg, beamHalfNS_deg)
+        continue;
+    end
+    v_user_km = P_user_km(:) - satGeom(iSat).P_leo_km(:);
+    d_hat = v_user_km / max(norm(v_user_km), eps);
+    offAxis = acosd(max(min(dot(d_hat, satGeom(iSat).b_all(:, b)), 1), -1));
+    if offAxis < bestOffAxis
+        bestOffAxis = offAxis;
+        bHome = b;
+    end
 end
 end
 

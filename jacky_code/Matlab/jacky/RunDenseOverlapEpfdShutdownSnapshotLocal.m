@@ -29,9 +29,19 @@ gsLon_deg = orbitLon_deg + gsRelLon_deg;    % absolute GS longitude
 % Ground footprint half-extents (flat-Earth nadir approx, same style as jacky.m).
 halfNS_km = alt_km * tand(beamHalfNS_total_deg);
 halfEW_km = alt_km * tand(beamHalfEW_deg);
-% 50% overlap => adjacent spacing = half footprint extent.
-spacingAlong_km = halfNS_km;
-spacingCross_km = halfEW_km;
+spacingMode = lower(string(opts.satSpacingMode));
+switch spacingMode
+    case "starlink_density"
+        % Local square-lattice spacing with the same surface density as a
+        % representative Starlink shell. Beam geometry is still OneWeb-like.
+        starlinkTotalSats = double(opts.starlinkDensityTotalSats);
+        spacingAlong_km = sqrt(4 * pi * Re_km^2 / starlinkTotalSats);
+        spacingCross_km = spacingAlong_km;
+    otherwise
+        % 50% overlap => adjacent spacing = half footprint extent.
+        spacingAlong_km = halfNS_km;
+        spacingCross_km = halfEW_km;
+end
 
 midOrbit = (nOrbit + 1) / 2;
 assert(abs(midOrbit - round(midOrbit)) < 1e-9, 'nOrbit must be odd so a middle orbit exists.');
@@ -205,8 +215,8 @@ aggAfter_dB = 10 * log10(max(aggAfter_lin, 1e-300));
 fprintf('\n===== Dense-overlap EPFD snapshot (MATLAB only) =====\n');
 fprintf('Orbits=%d, sats/orbit=%d, alt=%.0f km, -3dB halfEW=%.1f deg, halfNS_total=%.1f deg\n', ...
     nOrbit, nSatPerOrbit, alt_km, beamHalfEW_deg, beamHalfNS_total_deg);
-fprintf('Along-track spacing=%.1f km, cross-track spacing=%.1f km (50%% overlap)\n', ...
-    spacingAlong_km, spacingCross_km);
+fprintf('Spacing mode=%s, along-track=%.1f km, cross-track=%.1f km\n', ...
+    char(spacingMode), spacingAlong_km, spacingCross_km);
 fprintf('Middle-orbit lon=%.2f deg, GS rel lon=%.2f deg -> GS=(%.2f, %.2f), placement=%s\n', ...
     orbitLon_deg, gsRelLon_deg, gsLat_deg, gsLon_deg, gsPlaceDesc);
 fprintf('Aggregate EPFD before=%.3f dB, after=%.3f dB, thr=%.1f dB\n', ...
@@ -259,6 +269,8 @@ result.aggAfter_dB = aggAfter_dB;
 result.epfdThr_dB = P.EPFD_thr_dB;
 result.spacingAlong_km = spacingAlong_km;
 result.spacingCross_km = spacingCross_km;
+result.satSpacingMode = spacingMode;
+result.starlinkDensityTotalSats = opts.starlinkDensityTotalSats;
 result.halfEW_km = halfEW_km;
 result.halfNS_km = halfNS_km;
 result.gsLat_deg = gsLat_deg;
@@ -274,6 +286,12 @@ function opts = applyDenseSnapshotDefaultsLocal(opts)
 if ~isfield(opts, 'alt_km') || ~isfinite(opts.alt_km), opts.alt_km = 1200; end
 if ~isfield(opts, 'nOrbit') || ~isfinite(opts.nOrbit), opts.nOrbit = 5; end
 if ~isfield(opts, 'nSatPerOrbit') || ~isfinite(opts.nSatPerOrbit), opts.nSatPerOrbit = 10; end
+if ~isfield(opts, 'satSpacingMode') || strlength(string(opts.satSpacingMode)) == 0
+    opts.satSpacingMode = 'footprint_overlap';
+end
+if ~isfield(opts, 'starlinkDensityTotalSats') || ~isfinite(opts.starlinkDensityTotalSats)
+    opts.starlinkDensityTotalSats = 1584;
+end
 if ~isfield(opts, 'gsLat_deg') || ~isfinite(opts.gsLat_deg), opts.gsLat_deg = 0; end
 % Middle-orbit ground-track longitude (legacy: opts.gsLon_deg).
 if ~isfield(opts, 'orbitLon_deg') || ~isfinite(opts.orbitLon_deg)

@@ -390,10 +390,10 @@ end
 %   3. Max-User Iterative Selection — 每輪選可 reassociate 最多 users 的 edge
 %   4. Random Feasible Iterative Selection — 每輪隨機選可行 edge（30 次平均，固定 seed）
 %
-% User：100 fixed users，D_u = 25 Mbps；priority 50%%/30%%/20%% → weight 1/2/3
-% 輸出：graph_selection_comparison_results.mat/.csv
-%       fig_avg_satisfaction_graph_selection.png
-%       fig_priority_weighted_recovery_graph_selection.png
+% User：GS 周邊 cluster（buildDenseGraphScenarioLocal 固定放 GS 附近）
+% 容量：整條流程 Shannon B·log2(1+SINR)（RunGraphSelectionComparisonDenseShannonLocal）
+% 輸出：graph_selection_comparison_shannon_results.mat/.csv
+%       fig_*_graph_selection_shannon.png
 if ~exist('file_path', 'var') || strlength(string(file_path)) == 0
     file_path = "C:\Users\jacky\Desktop\jacky_code\jacky_code\";
 end
@@ -411,11 +411,16 @@ end
 if ~exist('evalFullBeamPower_W', 'var') || ~isfinite(evalFullBeamPower_W)
     evalFullBeamPower_W = 1.05;
 end
+if ~exist('evalUserDemand_Mbps', 'var') || ~isfinite(evalUserDemand_Mbps)
+    evalUserDemand_Mbps = 50;
+end
 
 optsDenseBase = struct();
 optsDenseBase.alt_km = alt_km;
-optsDenseBase.nOrbit = 5;
-optsDenseBase.nSatPerOrbit = 10;
+optsDenseBase.nOrbit = 7;
+optsDenseBase.nSatPerOrbit = 7;
+optsDenseBase.satSpacingMode = 'starlink_density';   % Starlink-like local satellite surface density
+optsDenseBase.starlinkDensityTotalSats = 1584;
 optsDenseBase.gsLat_deg = 0;
 optsDenseBase.orbitLon_deg = evalGsLon_deg;   % 中軌（P03）地面軌跡經度
 optsDenseBase.gsRelLon_deg = 0;               % GS 相對中軌的經度差 (deg)；0=在軌道正下方
@@ -425,7 +430,7 @@ optsDenseBase.beamHalfNS_total_deg = 25.0;    % -3 dB total NS half-angle (16 be
 optsDenseBase.fullBeamPower_W = evalFullBeamPower_W;
 optsDenseBase.epfdThr_dB = evalEpfdThr_dB_Baseline;
 optsDenseBase.showFigure = true;
-optsDenseBase.gsAnchorSatIdx = 5;             % 中軌第 5 顆
+optsDenseBase.gsAnchorSatIdx = 4;             % 中軌第 4 顆（7 顆時置中）
 
 % GS 在中軌第 5 顆衛星正下方
 optsDenseUnderS5 = optsDenseBase;
@@ -440,26 +445,41 @@ fprintf('Dense snapshot (GS under S05): nCritical=%d -> %s\n', ...
 % 實驗目的：在相同 candidate graphs、beam capacity、EPFD constraint、user distribution 下，
 % 比較四種 SBR/HBR edge selection 的 service recovery performance。
 % 方法：Proposed Dynamic-Score | Initial-Score | Max-User | Random Feasible (30 runs)
-% Users: 100 fixed, D_u=25 Mbps; priority 50%% low / 30%% med / 20%% high (fixed seeds)
+%
+% 需求：每位 user 於 [25, 100] Mbps 均勻隨機（userDemandSeed 可重現）
+% 建議設定（掃參）：nUsers=50，users 只撒在離 GS 最近 9 顆衛星 footprint 內
+%   recoveryPowerPoolMode='global'
+% 圖表：Fig.0 user+衛星分布；Fig.1 加權滿足度；Fig.2 平均滿足度（皆只統計 closed-beam 受影響 user）
 optsGraphSel = struct();
 optsGraphSel.file_path = file_path;
 optsGraphSel.alt_km = alt_km;
 optsGraphSel.orbitLon_deg = evalGsLon_deg;
 optsGraphSel.gsRelLon_deg = 0;
 optsGraphSel.gsPlacement = 'under_sat';
-optsGraphSel.gsAnchorSatIdx = 5;
+optsGraphSel.nOrbit = 7;
+optsGraphSel.nSatPerOrbit = 7;
+optsGraphSel.satSpacingMode = 'starlink_density';
+optsGraphSel.starlinkDensityTotalSats = 1584;
+optsGraphSel.gsAnchorSatIdx = 4;
 optsGraphSel.fullBeamPower_W = evalFullBeamPower_W;
 optsGraphSel.epfdThr_dB = evalEpfdThr_dB_Baseline;
-optsGraphSel.nUsers = 100;
-optsGraphSel.userDemand_Mbps = 25;
-optsGraphSel.userSeed = 42;
-optsGraphSel.prioritySeed = 42;
+optsGraphSel.recoveryPowerPoolMode = 'per_sat';
+optsGraphSel.nUsers = 600;
+optsGraphSel.userPlacementMode = 'nearest_sat_footprints';
+optsGraphSel.userPlacementNearestSatCount = 9;
 optsGraphSel.userSpreadLat_deg = 8;
 optsGraphSel.userSpreadLon_deg = 8;
+optsGraphSel.userDemandMode = 'random_uniform';
+optsGraphSel.userDemandMin_Mbps = 25;
+optsGraphSel.userDemandMax_Mbps = 150;
+optsGraphSel.userDemandSeed = 101;
+optsGraphSel.highPriorityRecoveryThreshold = 0.8;
+optsGraphSel.userSeed = 13;
+optsGraphSel.prioritySeed = 42;
 optsGraphSel.randomRuns = 30;
 optsGraphSel.randomSeed = 2026;
 optsGraphSel.showFigures = true;
-graphSelResult = RunGraphSelectionComparisonDenseLocal(optsGraphSel);
+graphSelResult = RunGraphSelectionComparisonDenseShannonLocal(optsGraphSel);
 
 
 

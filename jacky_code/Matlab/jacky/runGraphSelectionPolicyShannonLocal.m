@@ -1,6 +1,7 @@
-function result = runGraphSelectionPolicyLocal(scenario, policy, rngSeed)
-% runGraphSelectionPolicyLocal
-% Run SBR + power allocation + HBR with one edge-selection policy.
+function result = runGraphSelectionPolicyShannonLocal(scenario, policy, rngSeed)
+% runGraphSelectionPolicyShannonLocal
+% SBR + power allocation + HBR with Shannon capacity (B*log2(1+SINR)) throughout.
+% No fixed beamCapacity_Mbps demand-sum accounting.
 % policy: 'dynamic' | 'initial' | 'max_user' | 'random'
 %
 % Key baseline distinction (see runSbrProcedureLocal / runHbrProcedureLocal):
@@ -32,6 +33,9 @@ result.avgCriticalUserSatisfaction = criticalUserSatisfactionMetricLocal(st, sce
 result.priorityWeightedRecovered = priorityWeightedRecoveredMetricLocal(st, scenario, satisfaction);
 result.avgClosedBeamSatisfaction = closedBeamUserSatisfactionMetricLocal(st, scenario, satisfaction);
 result.priorityWeightedClosedBeam = priorityWeightedClosedBeamMetricLocal(st, scenario, satisfaction);
+result.priorityWeightedDemandRecovery = priorityWeightedDemandRecoveryMetricLocal(st, scenario, satisfaction);
+result.highPriorityRecoveryRatio = highPriorityRecoveryRatioMetricLocal(st, scenario, satisfaction);
+result.unservedHighPriorityDemand_Mbps = unservedHighPriorityDemandMetricLocal(st, scenario, satisfaction);
 result.satisfaction = satisfaction;
 result.runtime_s = toc(tStart);
 result.policy = string(policy);
@@ -55,10 +59,7 @@ else
 end
 st.sbrDone = false(nUser, 1);
 st.hbrDone = false(nUser, 1);
-st.safeBeamDemand_Mbps = zeros(nSat, nBeam);
-st.safeBeamCap_Mbps = scenario.beamCapacity_Mbps * ones(nSat, nBeam);
-st.recoveryPower_W = zeros(nSat, nBeam);
-st.recoveryDemand_Mbps = zeros(nSat, nBeam);
+st.recoveryPower_W = zeros(nSat, nBeam); % SBR-released boost only (added on top of fullBeamPower_W)
 st.releasedPower_W = zeros(nSat, 1);
 st.nSbrActivations = 0;
 st.nHbrActivations = 0;
@@ -71,7 +72,7 @@ if isempty(edges)
 end
 % Initial-score baseline: score/sort once at procedure start (no rescore later).
 if strcmp(policy, 'initial')
-    initOrder = scoreAndSortSbrEdgesLocal(st, scenario, edges, 'dynamic');
+    initOrder = scoreAndSortSbrEdgesLocal(st, scenario, edges, 'initial');
     initOrder = initOrder(initOrder > 0);
     edgeQueue = initOrder;
     queuePos = 1;
@@ -146,7 +147,7 @@ if isempty(edges)
     return;
 end
 if strcmp(policy, 'initial')
-    initOrder = scoreAndSortHbrEdgesLocal(st, scenario, edges, 'dynamic');
+    initOrder = scoreAndSortHbrEdgesLocal(st, scenario, edges, 'initial');
     initOrder = initOrder(initOrder > 0);
     queuePos = 1;
     while queuePos <= numel(initOrder)
@@ -267,7 +268,7 @@ if isempty(cand)
     score = 0;
     return;
 end
-subset = selectFeasibleSbrSubsetLocal(st, scenario, edge, cand);
+[subset, ~] = selectFeasibleSbrSubsetLocal(st, scenario, edge, cand);
 if isempty(subset)
     score = 0;
     return;
@@ -276,7 +277,7 @@ demandSum = sum(scenario.userDemand_bps(subset)) / 1e6;
 if strcmp(mode, 'max_user')
     score = numel(subset);
 else
-    score = demandSum; % demand-sum form; equals count*25 Mbps for homogeneous demand
+    score = demandSum;
 end
 end
 
@@ -292,11 +293,28 @@ if isempty(subset)
     score = 0;
     return;
 end
+iHelp = edge.iHelpSat;
+bRec = edge.bRecovery;
+[Prelay_W, ~] = helperBeamRelayPoolLocal(st, scenario, iHelp, bRec);
+nRelayBase = helperBeamRelayCountLocal(st, scenario, iHelp, bRec);
 if strcmp(mode, 'max_user')
     score = numel(subset);
+elseif strcmp(mode, 'initial')
+    score = 0;
+    for k = 1:numel(subset)
+        iu = subset(k);
+        nRelay = nRelayBase + k;
+        sTry = relayUserSatisfactionOnBeamLocal(iu, iHelp, bRec, Prelay_W, nRelay, scenario);
+        score = score + sTry;
+    end
 else
-    score = sum(scenario.priorityWeight(subset) .* ...
-        estimateHbrSatisfactionLocal(st, scenario, edge, subset));
+    score = 0;
+    for k = 1:numel(subset)
+        iu = subset(k);
+        nRelay = nRelayBase + k;
+        sTry = relayUserSatisfactionOnBeamLocal(iu, iHelp, bRec, Prelay_W, nRelay, scenario);
+        score = score + scenario.priorityWeight(iu) * sTry;
+    end
 end
 end
 
@@ -322,8 +340,6 @@ end
 
 function cand = candidateHbrUsersLocal(st, scenario, edge)
 cand = [];
-beamHalfNS_deg = scenario.beamHalfNS_deg;
-alt_km = scenario.alt_km;
 for iu = 1:scenario.nUsers
     if ~st.closedBeamUserMask(iu)
         continue;
@@ -334,29 +350,131 @@ for iu = 1:scenario.nUsers
     if st.hbrDone(iu)
         continue;
     end
-    uLat = asind(scenario.P_users_km(3, iu) / max(norm(scenario.P_users_km(:, iu)), eps));
-    uLon = atan2d(scenario.P_users_km(2, iu), scenario.P_users_km(1, iu));
-    if ~graphRecoverySharedLocal('userinfootprint', uLat, uLon, ...
-            scenario.satGeom(edge.iHelpSat), edge.bRecovery, scenario.beamHalfEW_deg, ...
-            beamHalfNS_deg, alt_km)
+    if ~graphRecoverySharedLocal('usercovered', scenario.satGeom(edge.iHelpSat), edge.bRecovery, ...
+            scenario.P_users_km(:, iu), scenario.beamHalfEW_deg, scenario.beamHalfNS_deg)
         continue;
     end
     cand(end+1) = iu; %#ok<AGROW>
 end
 end
 
-function subset = selectFeasibleSbrSubsetLocal(st, scenario, edge, cand)
-% Max demand-sum with non-degradation and safe-beam capacity.
+function Pbeam = helperBeamEffectivePowerLocal(st, scenario, iSat, b)
+% Nominal on-air power on open beams plus SBR-released boost (capped at maxBeamPower_W).
+Pbeam = 0;
+if iSat < 1 || b < 1
+    return;
+end
+if ~scenario.shutOffMat(iSat, b)
+    Pbeam = scenario.fullBeamPower_W;
+end
+Pbeam = Pbeam + st.recoveryPower_W(iSat, b);
+if isfield(scenario, 'maxBeamPower_W') && isfinite(scenario.maxBeamPower_W)
+    Pbeam = min(Pbeam, scenario.maxBeamPower_W);
+end
+end
+
+function nativeList = helperBeamNativeListLocal(st, scenario, iSat, b)
+% Non-closed-beam users already on this helper recovery beam (reserve power for them first).
+onBeam = find(st.userServiceSat == iSat & st.userServiceBeam == b);
+nativeList = onBeam(~scenario.closedBeamUserMask(onBeam));
+end
+
+function relayCount = helperBeamRelayCountLocal(st, scenario, iSat, b)
+onBeam = find(st.userServiceSat == iSat & st.userServiceBeam == b);
+relayCount = sum(scenario.closedBeamUserMask(onBeam));
+end
+
+function [Prelay_W, PnativeReserve_W] = helperBeamRelayPoolLocal(st, scenario, iSat, b)
+% Pool for HBR relays = total effective power minus per-native reserve for sat=1.
+Ptotal = helperBeamEffectivePowerLocal(st, scenario, iSat, b);
+nativeList = helperBeamNativeListLocal(st, scenario, iSat, b);
+if isempty(nativeList)
+    PnativeReserve_W = 0;
+    Prelay_W = Ptotal;
+    return;
+end
+[PnativeReserve_W, ~] = nativePowerReserveSumGraphLocal(nativeList, iSat, b, 1.0, ...
+    scenario.satGeom, scenario.P_users_km, scenario.params, scenario.userDemand_bps);
+if ~isfinite(PnativeReserve_W)
+    PnativeReserve_W = Ptotal;
+end
+Prelay_W = max(Ptotal - PnativeReserve_W, 0);
+end
+
+function [Psum_W, Puser_W] = nativePowerReserveSumGraphLocal(nativeList, iSat, b, targetSat, ...
+    satGeom, P_users_km, P, userDemand_bps)
+nNative = numel(nativeList);
+Puser_W = nan(nNative, 1);
+if nNative == 0
+    Psum_W = 0;
+    return;
+end
+for jj = 1:nNative
+    iu = nativeList(jj);
+    Puser_W(jj) = transmitPowerForUserTargetGraphLocal(iu, iSat, b, targetSat, nNative, ...
+        satGeom, P_users_km, P, userDemand_bps(iu));
+end
+if any(~isfinite(Puser_W))
+    Psum_W = inf;
+else
+    Psum_W = sum(Puser_W);
+end
+end
+
+function Ptx_W = transmitPowerForUserTargetGraphLocal(iu, iSat, b, targetSat, usersInBeam, ...
+    satGeom, P_users_km, P, userDemand_bps)
+targetSat = max(0, min(1, double(targetSat)));
+Buser = P.B_Hz;
+noisePower_W = P.kB * P.user_noise_temp_K * Buser;
+Gur_lin = 10^(P.GS_LEO_Gmax_dBi / 10);
+usersInBeam = max(double(usersInBeam), 1);
+targetCapacityPerUser_bps = targetSat * userDemand_bps * usersInBeam;
+sinrReq = 2^(targetCapacityPerUser_bps / max(Buser, eps)) - 1;
+channelGain = userLinkChannelGainGraphLocal(satGeom(iSat), b, P_users_km(:, iu), P, Gur_lin);
+if channelGain <= 0 || ~isfinite(channelGain)
+    Ptx_W = inf;
+else
+    Ptx_W = sinrReq * noisePower_W / channelGain;
+end
+end
+
+function channelGain = userLinkChannelGainGraphLocal(satGeomOne, beamIdx, P_user_km, P, Gur_lin)
+P_leo_km = satGeomOne.P_leo_km;
+b_hat = satGeomOne.b_all(:, beamIdx);
+c_axis = satGeomOne.c_axis;
+v_user_km = P_user_km(:) - P_leo_km(:);
+d_m = norm(v_user_km) * 1000;
+if d_m < 1
+    channelGain = 0;
+    return;
+end
+d_hat = v_user_km / max(norm(v_user_km), eps);
+t_axis = cross(c_axis, b_hat);
+t_axis = t_axis / max(norm(t_axis), eps);
+th_h = atan2d(dot(d_hat, c_axis), dot(d_hat, b_hat));
+th_v = atan2d(dot(d_hat, t_axis), dot(d_hat, b_hat));
+phi = hypot(th_h, th_v);
+Gt_lin = max(P.A_fit * exp(P.beta_fit * phi), 1e-30);
+pathGain = (P.lambda_m^2) / max((4 * pi * d_m)^2, eps);
+channelGain = Gt_lin * Gur_lin * pathGain;
+end
+
+function sTry = relayUserSatisfactionOnBeamLocal(iu, iSat, b, Prelay_W, nRelay, scenario)
+if nRelay < 1 || Prelay_W <= 0
+    sTry = 0;
+    return;
+end
+PtxEach = Prelay_W / nRelay;
+sTry = graphRecoverySharedLocal('satisfaction', iu, iSat, b, PtxEach, nRelay, ...
+    scenario.satGeom, scenario.P_users_km, scenario.params, scenario.userDemand_bps(iu));
+end
+
+function [subset, sNewVec] = selectFeasibleSbrSubsetLocal(st, scenario, edge, cand)
+% Shannon fair-share: non-degradation on helper beam + positive safe-beam satisfaction.
 iSafe = edge.iSafeSat;
 bSafe = edge.bSafe;
 iHelp = edge.iHelpSat;
 bRel = edge.bRelease;
-capRem_Mbps = st.safeBeamCap_Mbps(iSafe, bSafe) - st.safeBeamDemand_Mbps(iSafe, bSafe);
-if capRem_Mbps <= 0
-    subset = [];
-    return;
-end
-% Sort by helper-side satisfaction descending (prefer easier moves).
 sOld = zeros(numel(cand), 1);
 for k = 1:numel(cand)
     iu = cand(k);
@@ -367,68 +485,47 @@ for k = 1:numel(cand)
 end
 [~, ord] = sort(sOld, 'descend');
 subset = [];
+sNewVec = [];
 for k = 1:numel(ord)
     iu = cand(ord(k));
-    dMbps = scenario.userDemand_bps(iu) / 1e6;
-    if dMbps > capRem_Mbps + 1e-9
-        continue;
-    end
     nSafe = max(sum(st.userServiceSat == iSafe & st.userServiceBeam == bSafe), 1) + numel(subset);
     sNew = graphRecoverySharedLocal('satisfaction', iu, iSafe, bSafe, ...
         scenario.fullBeamPower_W, nSafe, scenario.satGeom, scenario.P_users_km, ...
         scenario.params, scenario.userDemand_bps(iu));
-    if sNew + 1e-9 < sOld(ord(k))
+    if sNew <= 0 || sNew + 1e-9 < sOld(ord(k))
         continue;
     end
     subset(end+1) = iu; %#ok<AGROW>
-    capRem_Mbps = capRem_Mbps - dMbps;
+    sNewVec(end+1) = sNew; %#ok<AGROW>
 end
 end
 
 function subset = selectFeasibleHbrSubsetLocal(st, scenario, edge, cand)
 iHelp = edge.iHelpSat;
 bRec = edge.bRecovery;
-Pavail = st.recoveryPower_W(iHelp, bRec);
-if Pavail <= 0
+[Prelay_W, PnativeReserve_W] = helperBeamRelayPoolLocal(st, scenario, iHelp, bRec);
+Ptotal = helperBeamEffectivePowerLocal(st, scenario, iHelp, bRec);
+if Ptotal <= 0 || (Prelay_W <= 0 && PnativeReserve_W >= Ptotal - 1e-12)
     subset = [];
     return;
 end
-capRem_Mbps = recoveryCapMbpsLocal(Pavail, scenario) - st.recoveryDemand_Mbps(iHelp, bRec);
-if capRem_Mbps <= 0
-    subset = [];
-    return;
+nRelayBase = helperBeamRelayCountLocal(st, scenario, iHelp, bRec);
+estSat = zeros(numel(cand), 1);
+for k = 1:numel(cand)
+    estSat(k) = relayUserSatisfactionOnBeamLocal(cand(k), iHelp, bRec, Prelay_W, ...
+        nRelayBase + 1, scenario);
 end
-estSat = estimateHbrSatisfactionLocal(st, scenario, edge, cand);
 metric = scenario.priorityWeight(cand) .* estSat;
 [~, ord] = sort(metric, 'descend');
 subset = [];
 for k = 1:numel(ord)
     iu = cand(ord(k));
-    dMbps = scenario.userDemand_bps(iu) / 1e6;
-    if dMbps > capRem_Mbps + 1e-9
+    nRelay = nRelayBase + numel(subset) + 1;
+    sTry = relayUserSatisfactionOnBeamLocal(iu, iHelp, bRec, Prelay_W, nRelay, scenario);
+    if sTry <= 0
         continue;
     end
     subset(end+1) = iu; %#ok<AGROW>
-    capRem_Mbps = capRem_Mbps - dMbps;
-end
-end
-
-function capMbps = recoveryCapMbpsLocal(power_W, scenario)
-capMbps = scenario.beamCapacity_Mbps * power_W / max(scenario.fullBeamPower_W, eps);
-end
-
-function estSat = estimateHbrSatisfactionLocal(st, scenario, edge, users)
-estSat = zeros(numel(users), 1);
-Pbeam = st.recoveryPower_W(edge.iHelpSat, edge.bRecovery);
-if Pbeam <= 0
-    Pbeam = scenario.fullBeamPower_W;
-end
-nServe = max(numel(users) + sum(st.userServiceSat == edge.iHelpSat & ...
-    st.userServiceBeam == edge.bRecovery), 1);
-for k = 1:numel(users)
-    iu = users(k);
-    estSat(k) = graphRecoverySharedLocal('satisfaction', iu, edge.iHelpSat, edge.bRecovery, ...
-        Pbeam, nServe, scenario.satGeom, scenario.P_users_km, scenario.params, scenario.userDemand_bps(iu));
 end
 end
 
@@ -441,9 +538,6 @@ if score <= 0 || isempty(subset)
 end
 nOnRelease = max(sum(st.userServiceSat == edge.iHelpSat & st.userServiceBeam == edge.bRelease), 1);
 for iu = subset
-    dMbps = scenario.userDemand_bps(iu) / 1e6;
-    st.safeBeamDemand_Mbps(edge.iSafeSat, edge.bSafe) = ...
-        st.safeBeamDemand_Mbps(edge.iSafeSat, edge.bSafe) + dMbps;
     st.userServiceSat(iu) = edge.iSafeSat;
     st.userServiceBeam(iu) = edge.bSafe;
     st.sbrDone(iu) = true;
@@ -466,8 +560,6 @@ end
 iHelp = edge.iHelpSat;
 bRec = edge.bRecovery;
 for iu = subset
-    dMbps = scenario.userDemand_bps(iu) / 1e6;
-    st.recoveryDemand_Mbps(iHelp, bRec) = st.recoveryDemand_Mbps(iHelp, bRec) + dMbps;
     st.userServiceSat(iu) = iHelp;
     st.userServiceBeam(iu) = bRec;
     st.hbrDone(iu) = true;
@@ -592,20 +684,59 @@ end
 function satisfaction = evaluateAllUserSatisfactionLocal(st, scenario)
 nUser = scenario.nUsers;
 satisfaction = zeros(nUser, 1);
-for iu = 1:nUser
-    iSat = st.userServiceSat(iu);
-    b = st.userServiceBeam(iu);
-    if iSat < 1 || b < 1
-        satisfaction(iu) = 0;
-        continue;
+for iSat = 1:scenario.nSat
+    for b = 1:scenario.nBeam
+        iuList = find(st.userServiceSat == iSat & st.userServiceBeam == b);
+        if isempty(iuList)
+            continue;
+        end
+        relayList = iuList(scenario.closedBeamUserMask(iuList));
+        nativeList = iuList(~scenario.closedBeamUserMask(iuList));
+        relayList = relayList(:);
+        nativeList = nativeList(:);
+        Ptotal = helperBeamEffectivePowerLocal(st, scenario, iSat, b);
+        if Ptotal <= 0
+            continue;
+        end
+        if isempty(relayList)
+            nOn = numel(iuList);
+            for jj = 1:numel(iuList)
+                iu = iuList(jj);
+                satisfaction(iu) = graphRecoverySharedLocal('satisfaction', iu, iSat, b, Ptotal, nOn, ...
+                    scenario.satGeom, scenario.P_users_km, scenario.params, scenario.userDemand_bps(iu));
+            end
+            continue;
+        end
+        [Prelay_W, PnativeReserve_W] = helperBeamRelayPoolLocal(st, scenario, iSat, b);
+        if ~isempty(nativeList)
+            [~, PuserNat_W] = nativePowerReserveSumGraphLocal(nativeList, iSat, b, 1.0, ...
+                scenario.satGeom, scenario.P_users_km, scenario.params, scenario.userDemand_bps);
+            nNat = numel(nativeList);
+            if isfinite(PnativeReserve_W) && PnativeReserve_W <= Ptotal + 1e-9
+                for jj = 1:nNat
+                    iu = nativeList(jj);
+                    Ptx = PuserNat_W(jj);
+                    satisfaction(iu) = graphRecoverySharedLocal('satisfaction', iu, iSat, b, Ptx, nNat, ...
+                        scenario.satGeom, scenario.P_users_km, scenario.params, scenario.userDemand_bps(iu));
+                end
+            else
+                for jj = 1:nNat
+                    iu = nativeList(jj);
+                    satisfaction(iu) = graphRecoverySharedLocal('satisfaction', iu, iSat, b, Ptotal, nNat, ...
+                        scenario.satGeom, scenario.P_users_km, scenario.params, scenario.userDemand_bps(iu));
+                end
+            end
+        end
+        nRelay = numel(relayList);
+        if nRelay > 0 && Prelay_W > 0
+            PtxRelay = Prelay_W / nRelay;
+            for jj = 1:nRelay
+                iu = relayList(jj);
+                satisfaction(iu) = graphRecoverySharedLocal('satisfaction', iu, iSat, b, PtxRelay, nRelay, ...
+                    scenario.satGeom, scenario.P_users_km, scenario.params, scenario.userDemand_bps(iu));
+            end
+        end
     end
-    Pbeam = scenario.fullBeamPower_W;
-    if st.recoveryPower_W(iSat, b) > 0
-        Pbeam = st.recoveryPower_W(iSat, b);
-    end
-    nOn = max(sum(st.userServiceSat == iSat & st.userServiceBeam == b), 1);
-    satisfaction(iu) = graphRecoverySharedLocal('satisfaction', iu, iSat, b, Pbeam, nOn, ...
-        scenario.satGeom, scenario.P_users_km, scenario.params, scenario.userDemand_bps(iu));
 end
 end
 
@@ -649,6 +780,58 @@ w = scenario.priorityWeight(mask);
 num = sum(w .* satisfaction(mask));
 den = sum(w);
 m = num / max(den, eps);
+end
+
+function m = priorityWeightedDemandRecoveryMetricLocal(st, scenario, satisfaction)
+mask = closedBeamAffectedUserMaskLocal(st);
+if ~any(mask)
+    m = NaN;
+    return;
+end
+w = scenario.priorityWeight(mask);
+dMbps = scenario.userDemand_bps(mask) / 1e6;
+num = sum(w .* dMbps .* satisfaction(mask));
+den = sum(w .* dMbps);
+m = num / max(den, eps);
+end
+
+function m = highPriorityRecoveryRatioMetricLocal(st, scenario, satisfaction)
+mask = highPriorityClosedBeamMaskLocal(st, scenario);
+if ~any(mask)
+    m = NaN;
+    return;
+end
+thr = highPriorityRecoveryThresholdLocal(scenario);
+m = mean(satisfaction(mask) >= thr, 'omitnan');
+end
+
+function m = unservedHighPriorityDemandMetricLocal(st, scenario, satisfaction)
+mask = highPriorityClosedBeamMaskLocal(st, scenario);
+if ~any(mask)
+    m = NaN;
+    return;
+end
+dMbps = scenario.userDemand_bps(mask) / 1e6;
+m = sum(dMbps .* max(1 - satisfaction(mask), 0));
+end
+
+function mask = highPriorityClosedBeamMaskLocal(st, scenario)
+closedMask = closedBeamAffectedUserMaskLocal(st);
+if ~any(closedMask)
+    mask = closedMask;
+    return;
+end
+maxWeight = max(scenario.priorityWeight(closedMask));
+mask = closedMask & (scenario.priorityWeight == maxWeight);
+end
+
+function thr = highPriorityRecoveryThresholdLocal(scenario)
+if isfield(scenario, 'highPriorityRecoveryThreshold') && ...
+        isfinite(scenario.highPriorityRecoveryThreshold)
+    thr = scenario.highPriorityRecoveryThreshold;
+else
+    thr = 0.8;
+end
 end
 
 function mask = closedBeamAffectedUserMaskLocal(st)

@@ -52,7 +52,7 @@ After the critical satellite set and helper satellite set are identified, the sy
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=0.8\columnwidth]{{ch4_Safe-release candidate graph}}
+  \includegraphics[width=0.6\columnwidth]{{ch4_Safe-release candidate graph}}
   \caption{Safe-release candidate graph between critical safe beams and helper release beam candidates. The left-side nodes $b_{s,\ell}^{\mathrm{safe}}$ denote safe beams on critical satellites, and the right-side nodes $b_{h,k}^{\mathrm{rls}}$ denote helper release beam candidates. An edge $e=(b_{s,\ell}^{\mathrm{safe}},b_{h,k}^{\mathrm{rls}})$ exists when the two beams have footprint overlap.}
   \label{fig:ch4_safe_release_graph}
 \end{figure}
@@ -61,7 +61,7 @@ As shown in Fig.~\ref{fig:ch4_safe_release_graph}, the safe-release candidate gr
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=0.8\columnwidth]{{ch4_Closed-recovery candidate graph}}
+  \includegraphics[width=0.6\columnwidth]{{ch4_Closed-recovery candidate graph}}
   \caption{Closed-recovery candidate graph between critical closed beams and helper recovery beam candidates. The left-side nodes $b_{s,\ell}^{\mathrm{off}}$ denote closed beams on critical satellites, and the right-side nodes $b_{h,k}^{\mathrm{rec}}$ denote helper recovery beam candidates. An edge $e=(b_{s,\ell}^{\mathrm{off}},b_{h,k}^{\mathrm{rec}})$ exists when the two beams have footprint overlap.}
   \label{fig:ch4_closed_recovery_graph}
 \end{figure}
@@ -83,26 +83,20 @@ As shown in Fig.~\ref{fig:ch4_safe_release_graph}, the left-side nodes are criti
 For a helper release beam candidate, the users currently served by this beam are called helper-side users. For an edge $e$, not all helper-side users are relevant to SBR. The helper-side users that are also covered by the critical safe beam connected to the same edge can be considered for reassociation through this edge. These users form the candidate helper-user set of edge $e$, denoted by $\mathcal{U}_e^{\mathrm{cand}}(t)$. At this stage, $\mathcal{U}_e^{\mathrm{cand}}(t)$ only represents the users that may be considered for reassociation through edge $e$, and no user is reassociated yet.
 
 \mdsubsubsection{Release Score Evaluation}
-For each edge $e$, SBR evaluates how much helper-side service demand can be moved from the helper release beam to the connected critical safe beam. The evaluation is performed over the candidate helper-user set $\mathcal{U}_e^{\mathrm{cand}}(t)$. From this set, SBR searches for a feasible user subset that can be taken over by the critical safe beam.
+For each edge $e$, SBR evaluates how much helper-side service demand can be moved from the helper release beam to the connected critical safe beam. The evaluation is performed over the candidate helper-user set $\mathcal{U}_e^{\mathrm{cand}}(t)$. From this set, SBR searches for a feasible user subset $\mathcal{U}_e^{\mathrm{sel}}(t)$ that can be taken over by the critical safe beam.
 
-A candidate helper user can be included in this subset only when two conditions are satisfied. First, after this user is moved from the helper release beam to the connected critical safe beam, its service satisfaction must not be lower than its original satisfaction on the helper release beam. If the user would receive lower satisfaction after reassociation, this user remains served by the original helper release beam and is not selected for this edge. Second, the critical safe beam must still have enough remaining capacity to serve the selected users. The total demand of the selected users cannot be larger than the remaining capacity of the critical safe beam.
+A candidate helper user can be included in $\mathcal{U}_e^{\mathrm{sel}}(t)$ only when two conditions are satisfied. First, after this user is moved from the helper release beam to the connected critical safe beam, its service satisfaction must not be lower than its original satisfaction on the helper release beam. If the user would receive lower satisfaction after reassociation, this user remains served by the original helper release beam and is not selected for this edge. Second, the critical safe beam must still have enough remaining capacity to serve the selected users. The total demand of the selected users in $\mathcal{U}_e^{\mathrm{sel}}(t)$ cannot be larger than the remaining capacity of the critical safe beam.
 
 The release score of edge $e$ is defined as the maximum total service demand that can be moved through this edge:
 \begin{equation}
 \label{eq:ch4_sbr_score}
 \Phi_e^{\mathrm{SBR}}(t)=
-\max_{\mathcal{U}\subseteq \mathcal{U}_e^{\mathrm{cand}}(t)}
-\sum_{u\in \mathcal{U}} D_u,
+\max_{\mathcal{U}_e^{\mathrm{sel}}(t)\subseteq \mathcal{U}_e^{\mathrm{cand}}(t)}
+\sum_{u\in \mathcal{U}_e^{\mathrm{sel}}(t)} D_u,
 \end{equation}
-where $\mathcal{U}$ is restricted to the feasible user subsets that satisfy the two conditions described above. A larger $\Phi_e^{\mathrm{SBR}}(t)$ means that more helper-side service demand can be moved away from the helper release beam through edge e. Therefore, this score is designed to prioritize the edge that can release the largest amount of helper-side service load while satisfying the capacity and non-degradation conditions. If no feasible user subset can be found, or if the connected critical safe beam has no remaining capacity, the release score of this edge is set to zero.
+where $\mathcal{U}_e^{\mathrm{sel}}(t)$ is restricted to the feasible user subsets that satisfy the two conditions described above. A larger $\Phi_e^{\mathrm{SBR}}(t)$ means that more helper-side service demand can be moved away from the helper release beam through edge $e$. Therefore, this score is designed to prioritize the edge that can release the largest amount of helper-side service load while satisfying the capacity and non-degradation conditions. If no feasible user subset can be found, or if the connected critical safe beam has no remaining capacity, the release score of this edge is set to zero.
 
 \mdsubsubsection{Iterative Edge Selection and Update}
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{{ch4_SBR iterative graph update}}
-  \caption{Example of iterative edge activation and graph update in SBR.}
-  \label{fig:ch4_sbr_iterative_update}
-\end{figure*}
 The safe-release candidate graph may contain several connected components. Each component includes the critical safe beams and helper release beam candidates that are connected through footprint overlap. SBR processes these components iteratively. In each component, SBR selects the edge with the highest release score. The selected edge is marked as an active safe-release relation, and the feasible user subset corresponding to this selected edge is reassociated from the helper release beam to the connected critical safe beam. After the reassociation, the loading and remaining capacity of the critical safe beam are updated, and the service load originally carried by the helper release beam is reduced. The released helper-side resources are added back to the power budget of the helper satellite.
 
 As illustrated in Fig.~\ref{fig:ch4_sbr_iterative_update}, the selected edge is marked in green with a check mark. After one edge is selected, the release scores of the remaining edges in the same component are updated because the remaining capacity of the connected critical safe beam may have changed. If a critical safe beam no longer has enough remaining capacity to take over additional helper users, the remaining edges connected to this safe beam are assigned a release score of zero. SBR then selects the next edge with the highest release score in the component. This process continues until the remaining edges in each component have zero release scores. At the end of SBR, the graph contains the selected safe-release relations and the remaining zero-score edges. The corresponding helper release beams reduce their original service load, and the released helper-side resources are added back to the power budget of the helper satellite.
@@ -126,24 +120,18 @@ As shown in Fig.~\ref{fig:ch4_closed_recovery_graph}, the left-side nodes are cr
 For a critical closed beam, the users originally served by this beam before shutdown are called closed-beam users. These users lose their original serving beam after the beam is shut down and therefore need to be reassociated to helper recovery beams. For an edge $e$ in the closed-recovery candidate graph, not all closed-beam users can be served through this edge. The closed-beam users that are also covered by the helper recovery beam connected to the same edge can be considered for reassociation. These users form the candidate closed-beam user set of edge $e$, denoted by $\mathcal{U}_e^{\mathrm{rec,cand}}(t)$. At this stage, $\mathcal{U}_e^{\mathrm{rec,cand}}(t)$ only represents the users that may be recovered through edge $e$, and no user is reassociated yet.
 
 \mdsubsubsection{Recovery Score Evaluation}
-For each edge $e$, HBR evaluates how much service can be recovered if some candidate closed-beam users are reassociated to the connected helper recovery beam. The evaluation is performed over the candidate closed-beam user set $\mathcal{U}_e^{\mathrm{rec,cand}}(t)$. From this set, HBR searches for a feasible user subset that can be served by the helper recovery beam under its available recovery resources.
+For each edge $e$, HBR evaluates how much service can be recovered if some candidate closed-beam users are reassociated to the connected helper recovery beam. The evaluation is performed over the candidate closed-beam user set $\mathcal{U}_e^{\mathrm{rec,cand}}(t)$. From this set, HBR searches for a feasible user subset $\mathcal{U}_e^{\mathrm{rec,sel}}(t)$ that can be served by the helper recovery beam under its available recovery resources.
 
-A candidate closed-beam user can be included in this subset only when the helper recovery beam still has enough available capacity to serve the selected users. Since the available recovery capacity of a helper recovery beam is limited, HBR first favors high-priority users and then selects the user subset that can achieve the largest recovered satisfaction under the available capacity. Therefore, the recovery score considers both the user priority and the estimated satisfaction after reassociation. The recovery score of edge $e$ is defined as
+A candidate closed-beam user can be included in $\mathcal{U}_e^{\mathrm{rec,sel}}(t)$ only when the helper recovery beam still has enough available capacity to serve the selected users. Since the available recovery capacity of a helper recovery beam is limited, HBR first favors high-priority users and then selects the user subset that can achieve the largest recovered satisfaction under the available capacity. Therefore, the recovery score considers both the user priority and the estimated satisfaction after reassociation. The recovery score of edge $e$ is defined as
 \begin{equation}
 \label{eq:ch4_hbr_score}
 \Phi_e^{\mathrm{HBR}}(t)=
-\max_{\mathcal{U}\subseteq \mathcal{U}_e^{\mathrm{rec,cand}}(t)}
-\sum_{u\in \mathcal{U}} w_{\pi(u)}\,\hat{s}_{u,e}^{\mathrm{rec}}(t),
+\max_{\mathcal{U}_e^{\mathrm{rec,sel}}(t)\subseteq \mathcal{U}_e^{\mathrm{rec,cand}}(t)}
+\sum_{u\in \mathcal{U}_e^{\mathrm{rec,sel}}(t)} w_{\pi(u)}\,\hat{s}_{u,e}^{\mathrm{rec}}(t),
 \end{equation}
-where $\mathcal{U}$ is restricted to the feasible user subsets that can be supported by the connected helper recovery beam. Here, $w_{\pi(u)}$ is the priority weight of user $u$, and $\hat{s}_{u,e}^{\mathrm{rec}}(t)$ is the estimated satisfaction of user $u$ if it is reassociated through edge $e$. A larger $\Phi_e^{\mathrm{HBR}}(t)$ means that this edge can recover a user subset with higher priority-weighted satisfaction. If no candidate closed-beam user can be served through this edge, or if the connected helper recovery beam has no available recovery capacity, the recovery score of this edge is set to zero.
+where $\mathcal{U}_e^{\mathrm{rec,sel}}(t)$ is restricted to the feasible user subsets that can be supported by the connected helper recovery beam. Here, $w_{\pi(u)}$ is the priority weight of user $u$, and $\hat{s}_{u,e}^{\mathrm{rec}}(t)$ is the estimated satisfaction of user $u$ if it is reassociated through edge $e$. A larger $\Phi_e^{\mathrm{HBR}}(t)$ means that this edge can recover a user subset with higher priority-weighted satisfaction. If no candidate closed-beam user can be served through this edge, or if the connected helper recovery beam has no available recovery capacity, the recovery score of this edge is set to zero.
 
 \mdsubsubsection{Iterative Edge Selection and Update}
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{{ch4_HBR iterative graph update}}
-  \caption{Example of iterative edge activation and graph update in HBR. Green edges denote selected closed-recovery relations. After selected closed-beam users are reassociated to helper recovery beams, the available helper power and remaining unrecovered users are updated, and the recovery scores of the remaining candidate edges are recalculated.}
-  \label{fig:ch4_hbr_iterative_update}
-\end{figure*}
 The closed-recovery candidate graph may also contain several connected components. Each component includes the critical closed beams and helper recovery beam candidates that are connected through footprint overlap. HBR processes these components iteratively. In each component, HBR selects the edge with the highest recovery score. The selected edge is marked as an active closed-recovery relation, and the corresponding feasible user subset is reassociated from the critical closed beam to the connected helper recovery beam. After the reassociation, the remaining users under the critical closed beam are updated, and the remaining recovery capacity of the helper recovery beam is also updated.
 
 As illustrated in Fig.~\ref{fig:ch4_hbr_iterative_update}, the selected edge is marked in green with a check mark. After one edge is selected, the recovery scores of the remaining edges in the same component are updated because the remaining users and the available recovery capacity may have changed. If a critical closed beam has no remaining user to recover, the remaining edges connected to this closed beam are assigned a recovery score of zero. Similarly, if a helper recovery beam has no remaining recovery capacity, the related edges are also assigned a recovery score of zero. HBR then selects the next edge with the highest recovery score in the component. This process continues until the remaining edges in each component have zero recovery scores. At the end of HBR, the framework obtains the selected closed-recovery relations and the closed-beam users that are moved to helper recovery beams. These users can then receive service from neighboring helper satellites.
@@ -216,3 +204,17 @@ Finally, the system performs HBR. HBR selects active closed-recovery relations a
 \State \Return $\mathbf{X}$, $\mathbf{P}$
 \end{algorithmic}
 \end{algorithm}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{{ch4_SBR iterative graph update}}
+  \caption{Example of iterative edge activation and graph update in SBR.}
+  \label{fig:ch4_sbr_iterative_update}
+\end{figure*}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{{ch4_HBR iterative graph update}}
+  \caption{Example of iterative edge activation and graph update in HBR. Green edges denote selected closed-recovery relations. After selected closed-beam users are reassociated to helper recovery beams, the available helper power and remaining unrecovered users are updated, and the recovery scores of the remaining candidate edges are recalculated.}
+  \label{fig:ch4_hbr_iterative_update}
+\end{figure*}
