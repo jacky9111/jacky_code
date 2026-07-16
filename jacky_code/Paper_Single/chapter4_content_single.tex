@@ -43,14 +43,14 @@ If a helper satellite $h$ has at least one helper release beam candidate or one 
 \mdsubsubsection{Candidate Beam Relation Graph Construction}
 After the critical satellite set and helper satellite set are identified, the system constructs candidate beam relation graphs to record beam overlap relations. These graphs indicate which beam pairs have footprint overlap and can therefore form candidate reassociation relations. To make the graph construction easier to understand, this subsection uses the representative OneWeb-like local geometry shown in Fig.~\ref{fig:ch4_oneweb_like_geometry}. In this illustrative example, each satellite is assumed to have 16 satellite-fixed downlink beams. Some beams of the critical satellites are shut down to satisfy the EPFD constraint, while neighboring satellites provide possible helper beams for service recovery. Based on the beam overlap relations in this local geometry, the system constructs the safe-release candidate graph and the closed-recovery candidate graph.
 
-\begin{figure}[t]
+\begin{figure}[H]
   \centering
   \includegraphics[width=\columnwidth]{{ch4_OneWeb-like local geometry}}
   \caption{Illustrative OneWeb-like local geometry used to explain candidate beam relation graph construction. Satellites S2, S5, and S8 are critical satellites, and S1, S3, S4, S6, S7, and S9 are helper satellites.}
   \label{fig:ch4_oneweb_like_geometry}
 \end{figure}
 
-\begin{figure}[t]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.6\columnwidth]{{ch4_Safe-release candidate graph}}
   \caption{Safe-release candidate graph between critical safe beams and helper release beam candidates. The left-side nodes $b_{s,\ell}^{\mathrm{safe}}$ denote safe beams on critical satellites, and the right-side nodes $b_{h,k}^{\mathrm{rls}}$ denote helper release beam candidates. An edge $e=(b_{s,\ell}^{\mathrm{safe}},b_{h,k}^{\mathrm{rls}})$ exists when the two beams have footprint overlap.}
@@ -59,7 +59,7 @@ After the critical satellite set and helper satellite set are identified, the sy
 
 As shown in Fig.~\ref{fig:ch4_safe_release_graph}, the safe-release candidate graph is constructed from the overlap relations between critical safe beams and helper release beam candidates in the illustrative geometry. This graph records which critical safe beams have footprint overlap with helper release beam candidates. It provides the candidate beam pairs used in Safe-Beam Reassociation for Helper Users (SBR), and the detailed reassociation procedure is described in Section~\ref{sec:ch4_sbr}.
 
-\begin{figure}[t]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.6\columnwidth]{{ch4_Closed-recovery candidate graph}}
   \caption{Closed-recovery candidate graph between critical closed beams and helper recovery beam candidates. The left-side nodes $b_{s,\ell}^{\mathrm{off}}$ denote closed beams on critical satellites, and the right-side nodes $b_{h,k}^{\mathrm{rec}}$ denote helper recovery beam candidates. An edge $e=(b_{s,\ell}^{\mathrm{off}},b_{h,k}^{\mathrm{rec}})$ exists when the two beams have footprint overlap.}
@@ -101,6 +101,13 @@ The safe-release candidate graph may contain several connected components. Each 
 
 As illustrated in Fig.~\ref{fig:ch4_sbr_iterative_update}, the selected edge is marked in green with a check mark. After one edge is selected, the release scores of the remaining edges in the same component are updated because the remaining capacity of the connected critical safe beam may have changed. If a critical safe beam no longer has enough remaining capacity to take over additional helper users, the remaining edges connected to this safe beam are assigned a release score of zero. SBR then selects the next edge with the highest release score in the component. This process continues until the remaining edges in each component have zero release scores. At the end of SBR, the graph contains the selected safe-release relations and the remaining zero-score edges. The corresponding helper release beams reduce their original service load, and the released helper-side resources are added back to the power budget of the helper satellite.
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{{ch4_SBR iterative graph update}}
+  \caption{Example of iterative edge activation and graph update in SBR.}
+  \label{fig:ch4_sbr_iterative_update}
+\end{figure}
+
 \subsection{Released Power Allocation for Helper Recovery Beams}
 
 After SBR is completed, the transmit power released by helper release beams is added back to the available power budget of the corresponding helper satellite. The system then allocates this available power to helper recovery beams on the same helper satellite as the available power of helper recovery beams for serving closed-beam users.
@@ -135,6 +142,13 @@ where $\mathcal{U}_e^{\mathrm{rec,sel}}(t)$ is restricted to the feasible user s
 The closed-recovery candidate graph may also contain several connected components. Each component includes the critical closed beams and helper recovery beam candidates that are connected through footprint overlap. HBR processes these components iteratively. In each component, HBR selects the edge with the highest recovery score. The selected edge is marked as an active closed-recovery relation, and the corresponding feasible user subset is reassociated from the critical closed beam to the connected helper recovery beam. After the reassociation, the remaining users under the critical closed beam are updated, and the remaining recovery capacity of the helper recovery beam is also updated.
 
 As illustrated in Fig.~\ref{fig:ch4_hbr_iterative_update}, the selected edge is marked in green with a check mark. After one edge is selected, the recovery scores of the remaining edges in the same component are updated because the remaining users and the available recovery capacity may have changed. If a critical closed beam has no remaining user to recover, the remaining edges connected to this closed beam are assigned a recovery score of zero. Similarly, if a helper recovery beam has no remaining recovery capacity, the related edges are also assigned a recovery score of zero. HBR then selects the next edge with the highest recovery score in the component. This process continues until the remaining edges in each component have zero recovery scores. At the end of HBR, the framework obtains the selected closed-recovery relations and the closed-beam users that are moved to helper recovery beams. These users can then receive service from neighboring helper satellites.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{{ch4_HBR iterative graph update}}
+  \caption{Example of iterative edge activation and graph update in HBR.}
+  \label{fig:ch4_hbr_iterative_update}
+\end{figure}
 
 \subsection{Overall Procedure and State Update}
 
@@ -204,17 +218,3 @@ Finally, the system performs HBR. HBR selects active closed-recovery relations a
 \State \Return $\mathbf{X}$, $\mathbf{P}$
 \end{algorithmic}
 \end{algorithm}
-
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{{ch4_SBR iterative graph update}}
-  \caption{Example of iterative edge activation and graph update in SBR.}
-  \label{fig:ch4_sbr_iterative_update}
-\end{figure*}
-
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{{ch4_HBR iterative graph update}}
-  \caption{Example of iterative edge activation and graph update in HBR.}
-  \label{fig:ch4_hbr_iterative_update}
-\end{figure*}

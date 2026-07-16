@@ -15,7 +15,7 @@ function Tplot = PlotFullPowerSweepRelayUserCountCompare(~, opts)
 %   relayUserMetric — 'assigned' | 'satisfied' (default 'satisfied')
 %   relaySuccessThreshold (default 0.9, for 'satisfied')
 %   segmentAggregate — 'mean' | 'sum' (default 'mean')
-%   yLabel — default 'Number of critical closed-beam user relays'
+%   yLabel — default 'Number of recovered closed-beam users'
 
 if nargin < 2 || isempty(opts)
     opts = struct();
@@ -38,7 +38,7 @@ if ~isfield(opts, 'nTimeSegments') || ~isfinite(opts.nTimeSegments)
     opts.nTimeSegments = 6;
 end
 if ~isfield(opts, 'yLabel') || strlength(string(opts.yLabel)) == 0
-    opts.yLabel = "Number of critical closed-beam user relays";
+    opts.yLabel = "Number of recovered closed-beam users";
 end
 if ~isfield(opts, 'relayUserMetric') || strlength(string(opts.relayUserMetric)) == 0
     opts.relayUserMetric = "satisfied";

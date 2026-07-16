@@ -275,7 +275,7 @@ optsFig4.relayUserMetric = "satisfied";
 optsFig4.relaySuccessThreshold = 0.9;
 optsFig4.segmentAggregate = "mean";
 optsFig4.barWidth = 1;
-optsFig4.yLabel = "Number of critical closed-beam user relays";
+optsFig4.yLabel = "Number of recovered closed-beam users";
 optsFig4.yLim = [0, numUsersPerSatPlot];  % Y 軸上限 = 本次 sweep 每星 user 數（U30→30, U50→50）
 optsFig4.figureTitle = evalFigureTitles.fig4;
 optsFig4.titleFontSize = evalFigureTitleFontSize;

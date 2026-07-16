@@ -1,96 +1,118 @@
-%% PlotCriticalHelpersGS - chapter3 network scenario schematic
-%  Three along-track LEO satellites (critical + north/south helpers)
-%  and protected GSO ground station g directly below critical sat (nadir).
+%% Closed-recovery candidate graph
+% Recreates the bipartite graph in the reference figure.
 clear; close all; clc;
 
-%% Output
-exportPdf = true;
-outName = 'ch3_critical_helpers_gs_schematic.pdf';
-outDir = fullfile(fileparts(mfilename('fullpath')), '..', char([35542, 25991]));
+% ----- Adjustable appearance -----
+lineWidth = 1;
+nodeSize = 64;
+labelFontSize = 17;
+figureSizePx = [100, 80, 500, 760];
 
-%% Schematic geometry (not to scale; geometry only)
-R = 4.2;
-h = 0.95;
-dTheta = 0.11;
+% ----- Nodes -----
+xLeft = 0.8;
+xRight = 5.1;
 
-C = [0, -R];
-theta_c = pi/2;
-theta_N = theta_c - dTheta;
-theta_S = theta_c + dTheta;
+leftY = [11.2, 7.4, 5.4, 1.7];
+leftLabels = { ...
+    '$b_{5,1}^{\mathrm{off}}$', ...
+    '$b_{5,8}^{\mathrm{off}}$', ...
+    '$b_{2,16}^{\mathrm{off}}$', ...
+    '$b_{5,16}^{\mathrm{off}}$'};
 
-r_orb = R + h;
-posN = C + r_orb * [cos(theta_N), sin(theta_N)];
-posC = C + r_orb * [cos(theta_c), sin(theta_c)];
-posS = C + r_orb * [cos(theta_S), sin(theta_S)];
-posG = C + R * [cos(theta_c), sin(theta_c)];
+rightY = [ ...
+    12.45, 11.45, 10.45, 9.45, ...
+     8.45,  7.45,  6.45, 5.45, ...
+     4.45,  3.45, ...
+     2.45,  1.45,  0.45, -0.55];
+rightLabels = { ...
+    '$b_{4,1}^{\mathrm{rec}}$', ...
+    '$b_{6,1}^{\mathrm{rec}}$', ...
+    '$b_{1,9}^{\mathrm{rec}}$', ...
+    '$b_{3,9}^{\mathrm{rec}}$', ...
+    '$b_{4,8}^{\mathrm{rec}}$', ...
+    '$b_{6,8}^{\mathrm{rec}}$', ...
+    '$b_{1,16}^{\mathrm{rec}}$', ...
+    '$b_{3,16}^{\mathrm{rec}}$', ...
+    '$b_{4,8}^{\mathrm{rec}}$', ...
+    '$b_{6,8}^{\mathrm{rec}}$', ...
+    '$b_{4,16}^{\mathrm{rec}}$', ...
+    '$b_{6,16}^{\mathrm{rec}}$', ...
+    '$b_{7,8}^{\mathrm{rec}}$', ...
+    '$b_{9,8}^{\mathrm{rec}}$'};
 
-th_arc = linspace(theta_S - 0.10, theta_N + 0.10, 240);
-orb_xy = C + r_orb * [cos(th_arc)', sin(th_arc)'];
+% Each row is [left-node index, right-node index].
+edges = [ ...
+    1 1; 1 2; 1 3; 1 4; ...
+    2 5; 2 6; 2 7; 2 8; ...
+    3 7; 3 8; 3 9; 3 10; ...
+    4 11; 4 12; 4 13; 4 14];
 
-th_surf = linspace(theta_S - 0.30, theta_N + 0.30, 320);
-surf_xy = C + R * [cos(th_surf)', sin(th_surf)'];
-
-%% Figure
-fig = figure('Color', 'w', 'Position', [120 120 760 540]);
+% ----- Draw graph -----
+fig = figure( ...
+    'Color', 'w', ...
+    'Position', figureSizePx, ...
+    'Renderer', 'painters');
 ax = axes('Parent', fig);
 hold(ax, 'on');
-axis(ax, 'equal');
-axis(ax, 'off');
 
-fill(ax, [surf_xy(:,1); C(1)], [surf_xy(:,2); C(2)], ...
-    [0.93 0.95 0.98], 'EdgeColor', 'none');
-plot(ax, surf_xy(:,1), surf_xy(:,2), 'k', 'LineWidth', 1.6);
-
-plot(ax, orb_xy(:,1), orb_xy(:,2), '--', ...
-    'Color', [0.38 0.38 0.38], 'LineWidth', 1.5);
-text(ax, orb_xy(1,1) - 0.55, orb_xy(1,2) + 0.12, 'LEO orbit', ...
-    'FontSize', 10, 'Color', [0.35 0.35 0.35], 'HorizontalAlignment', 'left');
-
-plot(ax, [posC(1), posG(1)], [posC(2), posG(2)], ':', ...
-    'Color', [0.50 0.50 0.50], 'LineWidth', 1.3);
-
-ms = 9;
-plot(ax, posN(1), posN(2), 'o', 'MarkerSize', ms, ...
-    'MarkerFaceColor', [0.22 0.48 0.78], 'MarkerEdgeColor', 'k', 'LineWidth', 0.9);
-plot(ax, posC(1), posC(2), 's', 'MarkerSize', ms + 2, ...
-    'MarkerFaceColor', [0.88 0.28 0.18], 'MarkerEdgeColor', 'k', 'LineWidth', 1.0);
-plot(ax, posS(1), posS(2), 'o', 'MarkerSize', ms, ...
-    'MarkerFaceColor', [0.22 0.48 0.78], 'MarkerEdgeColor', 'k', 'LineWidth', 0.9);
-plot(ax, posG(1), posG(2), '^', 'MarkerSize', 11, ...
-    'MarkerFaceColor', [0.12 0.12 0.12], 'MarkerEdgeColor', 'k', 'LineWidth', 0.9);
-
-lbl = @(p, s, dy, va) text(ax, p(1), p(2) + dy, s, ...
-    'Interpreter', 'latex', 'FontSize', 11, ...
-    'HorizontalAlignment', 'center', 'VerticalAlignment', va);
-lbl(posN, '$s^{\mathrm{N}}(t)$', 0.24, 'bottom');
-lbl(posC, '$s^{\mathrm{c}}(t)$', 0.26, 'bottom');
-lbl(posS, '$s^{\mathrm{S}}(t)$', -0.30, 'top');
-text(ax, posG(1), posG(2) - 0.38, 'Protected GS $g$', ...
-    'Interpreter', 'latex', 'FontSize', 11, ...
-    'HorizontalAlignment', 'center', 'VerticalAlignment', 'top');
-
-arrY = posC(2) + 0.62;
-arrX0 = posS(1) + 0.20;
-arrX1 = posN(1) - 0.20;
-quiver(ax, arrX0, arrY, arrX1 - arrX0, 0, 0, ...
-    'Color', 'k', 'LineWidth', 1.2, 'MaxHeadSize', 0.75, 'AutoScale', 'off');
-text(ax, 0.5 * (arrX0 + arrX1), arrY + 0.20, 'Along-track', ...
-    'FontSize', 10, 'HorizontalAlignment', 'center');
-text(ax, arrX1 + 0.12, arrY, 'North', ...
-    'FontSize', 10, 'HorizontalAlignment', 'left', 'VerticalAlignment', 'middle');
-
-text(ax, posC(1) - 2.35, posC(2) + 0.15, ...
-    {'Critical satellite', 'North / South helpers'}, ...
-    'FontSize', 9.5, 'Color', [0.25 0.25 0.25]);
-
-xlim(ax, [-3.2, 3.2]);
-ylim(ax, [-0.35, 6.35]);
-
-if exportPdf
-    if ~exist(outDir, 'dir')
-        mkdir(outDir);
-    end
-    outPath = fullfile(outDir, outName);
-    exportgraphics(fig, outPath, 'ContentType', 'vector');
-    fprintf('Exported: %s\n', outPath);
+% Draw edges before nodes so the nodes remain visually on top.
+for k = 1:size(edges, 1)
+    iLeft = edges(k, 1);
+    iRight = edges(k, 2);
+    plot(ax, [xLeft, xRight], [leftY(iLeft), rightY(iRight)], ...
+        'k-', 'LineWidth', lineWidth);
 end
+
+scatter(ax, repmat(xLeft, size(leftY)), leftY, nodeSize, ...
+    'k', 'filled', 'MarkerEdgeColor', 'k');
+scatter(ax, repmat(xRight, size(rightY)), rightY, nodeSize, ...
+    'k', 'filled', 'MarkerEdgeColor', 'k');
+
+% Mathematical labels.
+for k = 1:numel(leftY)
+    text(ax, xLeft - 0.27, leftY(k), leftLabels{k}, ...
+        'Interpreter', 'latex', ...
+        'FontSize', labelFontSize, ...
+        'HorizontalAlignment', 'right', ...
+        'VerticalAlignment', 'middle');
+end
+
+for k = 1:numel(rightY)
+    text(ax, xRight + 0.27, rightY(k), rightLabels{k}, ...
+        'Interpreter', 'latex', ...
+        'FontSize', labelFontSize, ...
+        'HorizontalAlignment', 'left', ...
+        'VerticalAlignment', 'middle');
+end
+
+% Omitted intermediate beam relations.
+text(ax, 3.15, 8.45, '$\vdots$', ...
+    'Interpreter', 'latex', 'FontSize', 22, ...
+    'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle');
+text(ax, 3.15, 3.25, '$\vdots$', ...
+    'Interpreter', 'latex', 'FontSize', 22, ...
+    'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle');
+
+axis(ax, 'off');
+xlim(ax, [-0.8, 6.75]);
+ylim(ax, [-1.1, 12.85]);
+set(ax, 'Position', [0.04, 0.025, 0.92, 0.95]);
+hold(ax, 'off');
+
+% ----- Export -----
+scriptDir = fileparts(mfilename('fullpath'));
+if isempty(scriptDir)
+    scriptDir = pwd;
+end
+outDir = fullfile(scriptDir, '..', 'Matlab_data');
+if ~exist(outDir, 'dir')
+    mkdir(outDir);
+end
+
+pngPath = fullfile(outDir, 'Closed_recovery_candidate_graph_matlab.png');
+pdfPath = fullfile(outDir, 'Closed_recovery_candidate_graph_matlab.pdf');
+exportgraphics(fig, pngPath, 'Resolution', 1200);
+exportgraphics(fig, pdfPath, 'ContentType', 'vector');
+
+fprintf('Saved PNG: %s\n', pngPath);
+fprintf('Saved PDF: %s\n', pdfPath);

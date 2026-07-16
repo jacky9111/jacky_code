@@ -10,6 +10,12 @@
 輸出：胡嘉祐_113522011.pdf
 內容：doc/01_封面.pdf + doc/02_title_page.pdf + 論文內文（無致謝、無申請附件）
 
+【一鍵編譯 — 精簡英譯版（封面＋英文摘要＋章節＋文獻）】
+  .\build_en_slim.ps1
+輸出：thesis_en_slim_full.pdf / 胡嘉祐_113522011_en_slim.pdf
+內容：doc/01_封面.pdf + English Abstract + Chapters 1--7 + Bibliography
+（不含中文摘要、內頁、目錄、圖表目錄、附件）
+
 【合併順序】
   doc/01_封面.pdf
   thesis_02_title.pdf              正式內頁
