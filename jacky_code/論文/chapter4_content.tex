@@ -10,13 +10,31 @@ Chapter III formulates the service recovery problem with user association, beam 
 
 The proposed framework is designed based on predictable satellite motion, beam footprints, EPFD contributions, and user service requirements. For each time slot, the framework determines which beams need to be shut down to satisfy the EPFD constraint and which neighboring satellites can support service recovery according to the current satellite geometry and EPFD condition. It then constructs candidate beam relation graphs to describe the possible reassociation relations between beams of critical satellites and neighboring helper satellites.
 
-The proposed framework consists of three major online procedures. First, Safe-Beam Reassociation for Helper Users (SBR) uses the residual capacity of critical safe beams to reassociate part of the helper users originally served by helper release beams. This reduces the loading of helper release beams and releases part of the helper satellite transmit power. Second, the released power is allocated to helper recovery beams according to their priority-weighted recovery demand. Third, Helper-Beam Reassociation for Closed-Beam Users (HBR) uses helper recovery beams to recover closed-beam users. Through these procedures, the proposed framework aims to improve service continuity for closed-beam users while maintaining EPFD compliance and power constraints.
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.4\columnwidth]{ch4_beam_on_per_satellite}
+  \caption{Illustrative satellite-fixed beam layout with 16 downlink beams indexed from north to south.}
+  \label{fig:ch4_beam_on_per_satellite}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.75\columnwidth]{ch4_OneWeb-like}
+  \caption{Illustrative OneWeb-like local satellite geometry across three neighboring orbital planes. Each satellite employs the 16-beam layout.}
+  \label{fig:ch4_oneweb_like}
+\end{figure}
+
+To explain the beam role identification and beam reassociation relations introduced later, this chapter uses a simplified OneWeb-like multi-beam scenario~\cite{oneweb2016fcc} for illustration. As shown in Fig.~\ref{fig:ch4_beam_on_per_satellite}, each satellite employs 16 satellite-fixed downlink beams, which are indexed from beam 1 to beam 16 according to their ground footprints from north to south. All satellites use the same beam layout and indexing rule, so each beam can be uniquely identified by its satellite and beam index.
+
+As shown in Fig.~\ref{fig:ch4_oneweb_like}, a local OneWeb-like satellite geometry across three neighboring orbital planes, denoted by P1, P2, and P3, is used to illustrate the multi-satellite coverage relationship. Satellites S1 to S9 represent satellites at different orbital positions, while the GS is located near the equator. Each satellite employs the same 16-beam layout shown in Fig.~\ref{fig:ch4_beam_on_per_satellite}. Because the service regions of neighboring satellites partially overlap, the same ground area may be covered by beams from different satellites. These overlapping coverage relations provide alternative serving-beam candidates for user reassociation and motivate the proposed EABR framework.
+
+The proposed framework consists of three major online procedures. First, Safe-Beam Reassociation for Helper Users (SBR) uses the residual capacity of critical safe beams to reassociate part of the helper users originally served by helper release beams. This reduces the loading of helper release beams and releases part of the helper satellite transmit power. Second, EPFD-constrained power allocation assigns the available helper satellite power to helper recovery beams according to their priority-weighted recovery demand. Third, Helper-Beam Reassociation for Closed-Beam Users (HBR) uses helper recovery beams to recover closed-beam users. Through these procedures, the proposed framework aims to improve service continuity for closed-beam users while maintaining EPFD compliance and power constraints.
 
 In summary, the proposed EPFD-aware beam reassociation framework consists of the following steps:
 \begin{itemize}[leftmargin=*,nosep]
   \item \textbf{Time-slot beam role record:} Precompute the critical satellites, closed beams, critical safe beams, helper release beam candidates, helper recovery beam candidates, and candidate beam relation graphs for each time slot.
   \item \textbf{Safe-Beam Reassociation for Helper Users (SBR):} Reassociate selected helper users from helper release beams to critical safe beams, reducing helper beam loading and releasing helper satellite transmit power.
-  \item \textbf{Released power allocation for helper recovery beams:} Allocate the released transmit power to helper recovery beams according to the priority-weighted recovery demand.
+  \item \textbf{EPFD-Constrained Power Allocation for Helper Recovery Beams:} Allocate the available helper satellite power to helper recovery beams according to the priority-weighted recovery demand, subject to beam power and aggregate EPFD constraints.
   \item \textbf{Helper-Beam Reassociation for Closed-Beam Users (HBR):} Reassociate selected closed-beam users to helper recovery beams and recover their service under the available power of helper recovery beams.
 \end{itemize}
 
@@ -27,26 +45,26 @@ Before the online reassociation procedures are executed, the system constructs a
 \mdsubsubsection{Critical Satellite and Beam Role Identification}
 For each time slot $t$, the system first checks whether the aggregate EPFD generated by all active beams of visible LEO satellites satisfies the EPFD limit. If the aggregate EPFD is already below the limit, beam shutdown is not required in this time slot, and the critical satellite set is empty. If the aggregate EPFD exceeds the limit, the system examines the beam-level EPFD contribution of each active beam on all visible LEO satellites and sorts the beams in descending order according to $\mathrm{EPFD}_{s,b}(t)$. The system then sequentially shuts down beams with higher EPFD contributions and updates the aggregate EPFD after each beam shutdown until the aggregate EPFD satisfies the EPFD limit.
 
-Let $\mathcal{B}_{s,l}^{\mathrm{off}}(t)$ denote the set of beams shut down on satellite $s$ in time slot $t$. After the beam shutdown process is completed, all satellites with a non-empty $\mathcal{B}_{s,l}^{\mathrm{off}}(t)$ form the critical satellite set, denoted by $\mathcal{S}^{\mathrm{C}}(t)$.
+Let $\mathcal{B}_{s}^{\mathrm{off}}(t)$ denote the set of beams shut down on satellite $s$ in time slot $t$. After the beam shutdown process is completed, all satellites with a non-empty $\mathcal{B}_{s}^{\mathrm{off}}(t)$ form the critical satellite set, denoted by $\mathcal{S}^{\mathrm{C}}(t)$.
 
-For each critical satellite $s$, the beams that are not shut down and remain active are denoted by $\mathcal{B}_{s,l}^{\mathrm{safe}}(t)$, and are referred to as safe beams. Therefore, the critical satellite set is determined by the beam shutdown result of each time slot. If beams from different satellites must be shut down to satisfy the EPFD constraint, these satellites are included in $\mathcal{S}^{\mathrm{C}}(t)$ at the same time.
+For each critical satellite $s$, the beams that are not shut down and remain active form the safe-beam set $\mathcal{B}_{s}^{\mathrm{safe}}(t)$, and are referred to as safe beams. An individual closed beam and safe beam are denoted by $b_{s,l}^{\mathrm{off}}$ and $b_{s,l}^{\mathrm{safe}}$, respectively. Therefore, the critical satellite set is determined by the beam shutdown result of each time slot. If beams from different satellites must be shut down to satisfy the EPFD constraint, these satellites are included in $\mathcal{S}^{\mathrm{C}}(t)$ at the same time.
 
 \mdsubsubsection{Helper Satellite and Beam Role Identification}
 After critical set identification is completed, the system constructs the helper satellite set, denoted by $\mathcal{S}^{\mathrm{H}}(t)$. Similar to the critical satellite role, the helper satellite is also a time-dependent operational role rather than a permanent satellite identity. A neighboring satellite is regarded as a helper only when its beams have feasible overlap relations with the current critical satellites and can support the service recovery process in the current time slot. Once the corresponding critical satellites no longer need to shut down beams for EPFD compliance, the helper relation is also released. For each helper satellite candidate, the system checks which of its beams overlap with the beams of the current critical satellites. Based on these overlap relations, each helper beam is then classified as a possible helper release beam or helper recovery beam.
 
-If the service area of a helper beam overlaps with the footprint of critical safe beams, this helper beam is marked as a helper release beam candidate, denoted by $\mathcal{B}_{h,k}^{\mathrm{rls}}(t)$. A helper release beam candidate represents a helper beam whose served users overlap with critical safe beams and whose loading may be reduced through reassociation.
+If the service area of a helper beam overlaps with the footprint of critical safe beams, this helper beam is marked as a helper release beam candidate, denoted by $b_{h,k}^{\mathrm{rls}}$. The set of helper release beam candidates on helper satellite $h$ at time slot $t$ is denoted by $\mathcal{B}_{h}^{\mathrm{rls}}(t)$. A helper release beam candidate represents a helper beam whose served users overlap with critical safe beams and whose loading may be reduced through reassociation.
 
-If the service area of a helper beam overlaps with the footprint of critical closed beams, this helper beam is marked as a helper recovery beam candidate, denoted by $\mathcal{B}_{h,k}^{\mathrm{rec}}(t)$. A helper recovery beam candidate represents a helper beam whose coverage can include users affected by closed beams.
+If the service area of a helper beam overlaps with the footprint of critical closed beams, this helper beam is marked as a helper recovery beam candidate, denoted by $b_{h,k}^{\mathrm{rec}}$. The set of helper recovery beam candidates on helper satellite $h$ at time slot $t$ is denoted by $\mathcal{B}_{h}^{\mathrm{rec}}(t)$. A helper recovery beam candidate represents a helper beam whose coverage can include users affected by closed beams.
 
-If a helper satellite $h$ has at least one helper release beam candidate or one helper recovery beam candidate, the satellite is included in the helper satellite set $\mathcal{S}^{\mathrm{H}}(t)$.
+If a helper satellite $h$ has a non-empty $\mathcal{B}_{h}^{\mathrm{rls}}(t)$ or a non-empty $\mathcal{B}_{h}^{\mathrm{rec}}(t)$, the satellite is included in the helper satellite set $\mathcal{S}^{\mathrm{H}}(t)$.
 
 \mdsubsubsection{Candidate Beam Relation Graph Construction}
-After the critical satellite set and helper satellite set are identified, the system constructs candidate beam relation graphs to record beam overlap relations. These graphs indicate which beam pairs have footprint overlap and can therefore form candidate reassociation relations. To make the graph construction easier to understand, this subsection uses the representative OneWeb-like local geometry shown in Fig.~\ref{fig:ch4_oneweb_like_geometry}. In this illustrative example, each satellite is assumed to have 16 satellite-fixed downlink beams. Some beams of the critical satellites are shut down to satisfy the EPFD constraint, while neighboring satellites provide possible helper beams for service recovery. Based on the beam overlap relations in this local geometry, the system constructs the safe-release candidate graph and the closed-recovery candidate graph.
+After the critical satellites, helper satellites, and beam roles are identified, the system constructs the candidate beam relation graphs according to the beam shutdown results and beam footprint overlap in each time slot. Fig.~\ref{fig:ch4_oneweb_like_geometry} shows the critical satellites, helper satellites, and closed-beam results in the illustrative scenario. If a critical safe beam overlaps with a helper release beam candidate, the corresponding beam pair is recorded in the safe-release candidate graph. If a critical closed beam overlaps with a helper recovery beam candidate, the corresponding beam pair is recorded in the closed-recovery candidate graph.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{{ch4_OneWeb-like local geometry}}
-  \caption{Illustrative OneWeb-like local geometry used to explain candidate beam relation graph construction. Satellites S2, S5, and S8 are critical satellites, and S1, S3, S4, S6, S7, and S9 are helper satellites.}
+  \caption{Illustrative beam-role identification result in the OneWeb-like local geometry. Satellites S2, S5, and S8 are critical satellites, while S1, S3, S4, S6, S7, and S9 are helper satellites. The hatched regions indicate closed beams on the critical satellites.}
   \label{fig:ch4_oneweb_like_geometry}
 \end{figure}
 
@@ -67,8 +85,6 @@ As shown in Fig.~\ref{fig:ch4_safe_release_graph}, the safe-release candidate gr
 \end{figure}
 
 As shown in Fig.~\ref{fig:ch4_closed_recovery_graph}, the closed-recovery candidate graph is constructed from the overlap relations between critical closed beams and helper recovery beam candidates in the illustrative geometry. Each edge records a beam pair with footprint overlap. This graph provides the candidate beam pairs used in Helper-Beam Reassociation for Closed-Beam Users (HBR), and the detailed reassociation procedure is described in Section~\ref{sec:ch4_hbr}.
-
-Through these two candidate beam relation graphs, the system records the beam pairs with footprint overlap between critical satellites and helper satellites. The safe-release candidate graph records the beam pairs between critical safe beams and helper release beam candidates, while the closed-recovery candidate graph records the beam pairs between critical closed beams and helper recovery beam candidates. These recorded beam pairs are used as candidates before users are reassociated.
 
 It should be noted that the candidate beam relation graphs are used only to illustrate the footprint overlap relations between beams. They show which beam pairs may have overlap in the current time slot, but they do not directly determine the reassociation result. The actual reassociation decisions are made later in Safe-Beam Reassociation for Helper Users (SBR) and Helper-Beam Reassociation for Closed-Beam Users (HBR).
 
@@ -93,21 +109,22 @@ The release score of edge $e$ is defined as the maximum total service demand tha
 \Phi_e^{\mathrm{SBR}}(t)=
 \max_{\mathcal{U}_e^{\mathrm{sel}}(t)\subseteq \mathcal{U}_e^{\mathrm{cand}}(t)}
 \sum_{u\in \mathcal{U}_e^{\mathrm{sel}}(t)} D_u,
+\tag{10}
 \end{equation}
 where $\mathcal{U}_e^{\mathrm{sel}}(t)$ is restricted to the feasible user subsets that satisfy the two conditions described above. A larger $\Phi_e^{\mathrm{SBR}}(t)$ means that more helper-side service demand can be moved away from the helper release beam through edge $e$. Therefore, this score is designed to prioritize the edge that can release the largest amount of helper-side service load while satisfying the capacity and non-degradation conditions. If no feasible user subset can be found, or if the connected critical safe beam has no remaining capacity, the release score of this edge is set to zero.
 
 \mdsubsubsection{Iterative Edge Selection and Update}
 The safe-release candidate graph may contain several connected components. Each component includes the critical safe beams and helper release beam candidates that are connected through footprint overlap. SBR processes these components iteratively. In each component, SBR selects the edge with the highest release score. The selected edge is marked as an active safe-release relation, and the feasible user subset corresponding to this selected edge is reassociated from the helper release beam to the connected critical safe beam. After the reassociation, the loading and remaining capacity of the critical safe beam are updated, and the service load originally carried by the helper release beam is reduced. The released helper-side resources are added back to the power budget of the helper satellite.
 
-As illustrated in Fig.~\ref{fig:ch4_sbr_iterative_update}, the selected edge is marked in green with a check mark. After one edge is selected, the release scores of the remaining edges in the same component are updated because the remaining capacity of the connected critical safe beam may have changed. If a critical safe beam no longer has enough remaining capacity to take over additional helper users, the remaining edges connected to this safe beam are assigned a release score of zero. SBR then selects the next edge with the highest release score in the component. This process continues until the remaining edges in each component have zero release scores. At the end of SBR, the graph contains the selected safe-release relations and the remaining zero-score edges. The corresponding helper release beams reduce their original service load, and the released helper-side resources are added back to the power budget of the helper satellite.
+As illustrated in Fig.~\ref{fig:ch4_sbr_iterative_update}, the selected edge is marked in blue with a check mark. After one edge is selected, the release scores of the remaining edges in the same component are updated because the remaining capacity of the connected critical safe beam may have changed. If a critical safe beam no longer has enough remaining capacity to take over additional helper users, the remaining edges connected to this safe beam are assigned a release score of zero. SBR then selects the next edge with the highest release score in the component. This process continues until the remaining edges in each component have zero release scores. At the end of SBR, the graph contains the selected safe-release relations and the remaining zero-score edges. The corresponding helper release beams reduce their original service load, and the released helper-side resources are added back to the power budget of the helper satellite.
 
-\subsection{Released Power Allocation for Helper Recovery Beams}
+\subsection{EPFD-Constrained Power Allocation for Helper Recovery Beams}
 
-After SBR is completed, the transmit power released by helper release beams is added back to the available power budget of the corresponding helper satellite. The system then allocates this available power to helper recovery beams on the same helper satellite as the available power of helper recovery beams for serving closed-beam users.
+After SBR is completed, the transmit power released by helper release beams is added back to the available power budget of the corresponding helper satellite. This available power budget consists of the residual satellite power remaining after the default beam-power allocation and the transmit power released through SBR. The system then allocates the available power to helper recovery beams on the same helper satellite for serving closed-beam users.
 
 To determine the power allocation order, the system first checks the candidate users connected to each helper recovery beam according to the closed-recovery candidate graph. These candidate users come from critical closed beams that have footprint overlap with the helper recovery beam. The system then calculates the priority-weighted recovery demand of each helper recovery beam based on the service priorities and traffic demands of these candidate users. If a helper recovery beam is connected to more high-priority users or users with larger traffic demand, the beam has a higher recovery demand value.
 
-After the recovery demand value is calculated, the helper recovery beams are sorted in descending order of priority-weighted recovery demand. The released power is then allocated to the helper recovery beams according to this order. Each helper recovery beam can be increased at most to its beam power upper bound. If a beam reaches its upper bound, the remaining released power is allocated to the next helper recovery beam. This process continues until the released power is exhausted or all helper recovery beams have reached their beam power upper bounds.
+After the recovery demand value is calculated, the helper recovery beams are sorted in descending order of priority-weighted recovery demand. The available power budget of the helper satellite is then allocated to the helper recovery beams according to this order. For each helper recovery beam, the amount of additional power that can be allocated is determined under the beam power upper bound, the available power budget of the helper satellite, and the aggregate EPFD constraint. Before this power allocation is accepted, the aggregate EPFD is recalculated using the updated transmit power of the current helper recovery beam. If the resulting aggregate EPFD remains below the applicable EPFD limit, the power allocation is accepted. Otherwise, the allocated power is reduced to the maximum feasible amount that still satisfies the EPFD constraint. If no additional power can be allocated to the current helper recovery beam, its transmit power remains unchanged, and the allocation procedure proceeds to the next helper recovery beam. After each accepted allocation, the available power budget of the helper satellite and the aggregate EPFD are updated. This process continues until the available power budget is exhausted or no further feasible power allocation can be made under the beam power and EPFD constraints.
 
 \subsection{Helper-Beam Reassociation for Closed-Beam Users}
 \label{sec:ch4_hbr}
@@ -128,17 +145,18 @@ A candidate closed-beam user can be included in $\mathcal{U}_e^{\mathrm{rec,sel}
 \Phi_e^{\mathrm{HBR}}(t)=
 \max_{\mathcal{U}_e^{\mathrm{rec,sel}}(t)\subseteq \mathcal{U}_e^{\mathrm{rec,cand}}(t)}
 \sum_{u\in \mathcal{U}_e^{\mathrm{rec,sel}}(t)} w_{\pi(u)}\,\hat{s}_{u,e}^{\mathrm{rec}}(t),
+\tag{11}
 \end{equation}
 where $\mathcal{U}_e^{\mathrm{rec,sel}}(t)$ is restricted to the feasible user subsets that can be supported by the connected helper recovery beam. Here, $w_{\pi(u)}$ is the priority weight of user $u$, and $\hat{s}_{u,e}^{\mathrm{rec}}(t)$ is the estimated satisfaction of user $u$ if it is reassociated through edge $e$. A larger $\Phi_e^{\mathrm{HBR}}(t)$ means that this edge can recover a user subset with higher priority-weighted satisfaction. If no candidate closed-beam user can be served through this edge, or if the connected helper recovery beam has no available recovery capacity, the recovery score of this edge is set to zero.
 
 \mdsubsubsection{Iterative Edge Selection and Update}
 The closed-recovery candidate graph may also contain several connected components. Each component includes the critical closed beams and helper recovery beam candidates that are connected through footprint overlap. HBR processes these components iteratively. In each component, HBR selects the edge with the highest recovery score. The selected edge is marked as an active closed-recovery relation, and the corresponding feasible user subset is reassociated from the critical closed beam to the connected helper recovery beam. After the reassociation, the remaining users under the critical closed beam are updated, and the remaining recovery capacity of the helper recovery beam is also updated.
 
-As illustrated in Fig.~\ref{fig:ch4_hbr_iterative_update}, the selected edge is marked in green with a check mark. After one edge is selected, the recovery scores of the remaining edges in the same component are updated because the remaining users and the available recovery capacity may have changed. If a critical closed beam has no remaining user to recover, the remaining edges connected to this closed beam are assigned a recovery score of zero. Similarly, if a helper recovery beam has no remaining recovery capacity, the related edges are also assigned a recovery score of zero. HBR then selects the next edge with the highest recovery score in the component. This process continues until the remaining edges in each component have zero recovery scores. At the end of HBR, the framework obtains the selected closed-recovery relations and the closed-beam users that are moved to helper recovery beams. These users can then receive service from neighboring helper satellites.
+As illustrated in Fig.~\ref{fig:ch4_hbr_iterative_update}, the selected edge is marked in blue with a check mark. After one edge is selected, the recovery scores of the remaining edges in the same component are updated because the remaining users and the available recovery capacity may have changed. If a critical closed beam has no remaining user to recover, the remaining edges connected to this closed beam are assigned a recovery score of zero. Similarly, if a helper recovery beam has no remaining recovery capacity, the related edges are also assigned a recovery score of zero. HBR then selects the next edge with the highest recovery score in the component. This process continues until the remaining edges in each component have zero recovery scores. At the end of HBR, the framework obtains the selected closed-recovery relations and the closed-beam users that are moved to helper recovery beams. These users can then receive service from neighboring helper satellites.
 
 \subsection{Overall Procedure and State Update}
 
-This section summarizes the overall procedure of EPFD-Aware Beam Reassociation for Service Recovery. The previous subsections describe the time-slot beam role record, SBR, released power allocation, and HBR. This section connects these steps into a complete time-slot procedure and explains the system state that must be updated after each time slot.
+This section summarizes the overall procedure of EPFD-Aware Beam Reassociation for Service Recovery. The previous subsections describe the time-slot beam role record, SBR, EPFD-constrained power allocation, and HBR. This section connects these steps into a complete time-slot procedure and explains the system state that must be updated after each time slot.
 
 Before the online reassociation procedures are executed, the system precomputes the time-slot beam role records for all time slots according to predictable satellite motion, beam footprints, user coverage, and beam-level EPFD contributions. If the aggregate EPFD of a time slot already satisfies the EPFD limit, beam shutdown is not required in that time slot. If the aggregate EPFD exceeds the limit, the corresponding critical satellites, closed beams, critical safe beams, helper release beam candidates, and helper recovery beam candidates are stored in the record.
 
@@ -146,7 +164,7 @@ The system further constructs the safe-release candidate graphs and the closed-r
 
 In each time slot, the system retrieves the corresponding time-slot beam role record. If no closed beam exists in the time slot, the system does not need to execute the following reassociation procedures. If closed beams exist, the system first performs SBR. SBR selects active safe-release relations according to the release score of each safe-release edge and reassociates the feasible helper-side user subsets to the corresponding critical safe beams. After SBR is completed, the loading of helper release beams is reduced, and the corresponding released transmit power is added to the available power budget of the helper satellite.
 
-Before HBR is executed, the system performs released power allocation. This step allocates the available power of the helper satellite to helper recovery beams according to their priority-weighted recovery demand. After the allocation, each helper recovery beam obtains updated available recovery power.
+Before HBR is executed, the system performs EPFD-constrained power allocation. This step allocates the available power of the helper satellite to helper recovery beams according to their priority-weighted recovery demand, subject to beam power and aggregate EPFD constraints. After the allocation, each helper recovery beam obtains updated available recovery power.
 
 Finally, the system performs HBR. HBR selects active closed-recovery relations according to the recovery score of each closed-recovery edge and reassociates the feasible closed-beam user subsets to the corresponding helper recovery beams.
 
@@ -158,7 +176,7 @@ Finally, the system performs HBR. HBR selects active closed-recovery relations a
 \Require LEO constellation and beam configuration, GSO--GS and EPFD model, user distribution with service demand and priority weights, and beam power configuration
 \Ensure User association sequence $\mathbf{X}$ and beam power allocation sequence $\mathbf{P}$
 
-\State Initialize $\mathbf{X}(t)$ and $\mathbf{P}(t)$
+\State Initialize $\mathbf{X}$ and $\mathbf{P}$
 \State Precompute the time-slot beam role records for all time slots
 \State Construct the safe-release candidate graphs for all time slots
 \State Construct the closed-recovery candidate graphs for all time slots
@@ -175,16 +193,18 @@ Finally, the system performs HBR. HBR selects active closed-recovery relations a
         \State Divide the current safe-release candidate graph into connected components
         \For{each connected component}
             \State Select the edge $e$ with the maximum $\Phi_e^{\mathrm{SBR}}(t)$
-            \State Reassociate the feasible user subset in $\mathcal{U}_e^{\mathrm{cand}}(t)$ of edge $e$ to the corresponding critical safe beam
+            \State Reassociate the selected user subset $\mathcal{U}_e^{\mathrm{sel}}(t)$ of edge $e$ to the corresponding critical safe beam
             \State Add edge $e$ to the active safe-release relation set
             \State Mark edge $e$ as selected
         \EndFor
         \State Update the safe-release candidate graph and recompute the release scores by \eqref{eq:ch4_sbr_score}
     \EndWhile
-    \State \textbf{// Released Power Allocation for Helper Recovery Beams}
+    \State \textbf{// EPFD-Constrained Power Allocation for Helper Recovery Beams}
+    \State Update the available power budget of each helper satellite by adding the transmit power released through SBR
     \State Compute the priority-weighted recovery demand of each helper recovery beam
     \State Sort helper recovery beams in descending order of priority-weighted recovery demand
-    \State Allocate the released power to helper recovery beams subject to beam and satellite power limits
+    \State Allocate the available helper satellite power to helper recovery beams subject to beam power and aggregate EPFD constraints
+    \State Recalculate and update the aggregate EPFD after each accepted power allocation
     \State Update the available power of helper recovery beams
     \State \textbf{// Helper-Beam Reassociation for Closed-Beam Users}
     \State Initialize the active closed-recovery relation set as empty
@@ -193,7 +213,7 @@ Finally, the system performs HBR. HBR selects active closed-recovery relations a
         \State Divide the current closed-recovery candidate graph into connected components
         \For{each connected component}
             \State Select the edge $e$ with the maximum $\Phi_e^{\mathrm{HBR}}(t)$
-            \State Reassociate the feasible user subset in $\mathcal{U}_e^{\mathrm{rec,cand}}(t)$ of edge $e$ to the corresponding helper recovery beam
+            \State Reassociate the selected user subset $\mathcal{U}_e^{\mathrm{rec,sel}}(t)$ of edge $e$ to the corresponding helper recovery beam
             \State Add edge $e$ to the active closed-recovery relation set
             \State Mark edge $e$ as selected
         \EndFor

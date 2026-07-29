@@ -10,7 +10,7 @@ We consider a general multi-beam LEO satellite communication system under NGSO--
 
 The system is modeled in discrete time slots. Let $\mathcal{T}$ denote the set of time slots considered in this work, and let $t\in\mathcal{T}$ denote a specific time slot. For each time slot $t$, the satellite geometry, beam footprints, user coverage, and EPFD contribution may change due to LEO satellite motion. Therefore, the system state is evaluated on a time-slot basis.
 
-Let $\mathcal{S}(t)$ denote the set of LEO satellites visible from the GS at time slot $t$, and let $\mathcal{B}_s$ denote the set of beams on satellite $s$. Each satellite employs a satellite-fixed multi-beam downlink layout, where each beam has a predefined pointing direction relative to the satellite and forms a corresponding ground footprint. For beam $b$ on satellite $s$, the ground footprint at time slot $t$ is denoted by $\mathcal{F}_{s,b}(t)$. If user $u$ lies within $\mathcal{F}_{s,b}(t)$, beam $b$ on satellite $s$ is regarded as a feasible serving candidate for that user.
+Let $\mathcal{S}(t)$ denote the set of LEO satellites visible from the GS at time slot $t$, and let $\mathcal{B}_s$ denote the set of beams on satellite $s$. Each satellite employs a satellite-fixed multi-beam downlink layout~\cite{lei2011multibeam}, where each beam has a predefined pointing direction relative to the satellite and forms a corresponding ground footprint. For beam $b$ on satellite $s$, the ground footprint at time slot $t$ is denoted by $\mathcal{F}_{s,b}(t)$. If user $u$ lies within $\mathcal{F}_{s,b}(t)$, beam $b$ on satellite $s$ is regarded as a feasible serving candidate for that user.
 
 Because neighboring LEO satellites and their beams may have overlapping ground footprints, a terrestrial user may be covered by multiple beams from visible LEO satellites in the same time slot. This overlap provides multiple feasible serving beams for user association and resource coordination.
 
@@ -59,14 +59,14 @@ The total propagation loss includes free-space path loss and atmospheric gaseous
 \begin{equation*}
 L_{s,u}(t)=L_{s,u}^{\mathrm{fs}}(t)\,L_{s,u}^{\mathrm{gas}}(t),
 \end{equation*}
-where $L_{s,u}^{\mathrm{fs}}(t)$ is the free-space path loss and $L_{s,u}^{\mathrm{gas}}(t)$ is the atmospheric gaseous loss. The free-space path loss is given by
+where $L_{s,u}^{\mathrm{fs}}(t)$ is the free-space path loss~\cite{itur_p525} and $L_{s,u}^{\mathrm{gas}}(t)$ is the atmospheric gaseous loss~\cite{itur_p676}. The free-space path loss is given by
 \begin{equation*}
 L_{s,u}^{\mathrm{fs}}(t)=\left(\frac{4\pi d_{s,u}(t)}{\lambda}\right)^2,
 \end{equation*}
 where $d_{s,u}(t)$ is the distance between satellite $s$ and user $u$, and $\lambda$ is the carrier wavelength.
 
 \mdparagraph{LEO Intra-Satellite Interference}
-The LEO intra-satellite interference comes from co-channel beams on the same satellite. Let $\mathcal{B}_s^{\mathrm{co}}(b)$ denote the set of beams on satellite $s$ that use the same downlink frequency resource as the serving beam $b$, excluding beam $b$ itself. The intra-satellite interference received by user $u$ is given by
+The LEO intra-satellite interference comes from co-channel beams on the same satellite~\cite{cocco2014cochannel}. Let $\mathcal{B}_s^{\mathrm{co}}(b)$ denote the set of beams on satellite $s$ that use the same downlink frequency resource as the serving beam $b$, excluding beam $b$ itself. The intra-satellite interference received by user $u$ is given by
 \begin{equation*}
 I_u^{\mathrm{intra}}(t)=\sum_{b'\in\mathcal{B}_s^{\mathrm{co}}(b)}
 \frac{p_{s,b'}(t)\,G^{\mathrm{tx}}_{s,b'\to u}(t)\,G^{\mathrm{rx}}_u}{L_{s,u}(t)}.
@@ -84,7 +84,7 @@ where $G^{\mathrm{tx}}_{s',b'\to u}(t)$ is the transmit antenna gain of the inte
 With this SINR model, the user SINR changes when the serving beam, beam transmit power, propagation loss, or LEO co-channel interference changes.
 
 \mdsubsubsection[sssec:capacity]{Capacity and User Satisfaction Model}
-After obtaining the user SINR, the achievable downlink capacity is modeled by the Shannon capacity formula, which is commonly used in wireless and satellite communication systems. Let $B$ denote the downlink bandwidth of a beam. If user $u$ is served by beam $b$ of satellite $s$ at time slot $t$, the achievable downlink capacity of user $u$ is given by
+After obtaining the user SINR, the achievable downlink capacity is modeled by the Shannon capacity formula~\cite{shannon1948}, which is commonly used in wireless and satellite communication systems. Let $B$ denote the downlink bandwidth of a beam. If user $u$ is served by beam $b$ of satellite $s$ at time slot $t$, the achievable downlink capacity of user $u$ is given by
 \begin{equation*}
 C_u(t)=B\log_2\!\bigl(1+\mathrm{SINR}_u(t)\bigr).
 \end{equation*}

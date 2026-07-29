@@ -15,16 +15,26 @@ tStart = tic;
 
 st = initRecoveryStateLocal(scenario);
 
-% --- SBR: iterative edge selection ---
-% Proposed (dynamic): recompute edge score every round.
-% Initial-score: compute score once at procedure start; fixed sort, no rescore.
-st = runSbrProcedureLocal(st, scenario, policy);
+onlyHbrInitial = isfield(scenario, 'onlyHbrWithInitialPower') && ...
+    logical(scenario.onlyHbrWithInitialPower);
 
-% Released power allocation to helper recovery beams.
-st = allocateRecoveryPowerLocal(st, scenario);
+if onlyHbrInitial
+    % Only HBR: skip SBR / released-power boost; each recovery beam uses
+    % its nominal/initial full-beam power.
+    st = allocateInitialBeamPowerForHbrLocal(st, scenario);
+    st = runHbrProcedureLocal(st, scenario, policy);
+else
+    % --- SBR: iterative edge selection ---
+    % Proposed (dynamic): recompute edge score every round.
+    % Initial-score: compute score once at procedure start; fixed sort, no rescore.
+    st = runSbrProcedureLocal(st, scenario, policy);
 
-% --- HBR ---
-st = runHbrProcedureLocal(st, scenario, policy);
+    % Released power allocation to helper recovery beams.
+    st = allocateRecoveryPowerLocal(st, scenario);
+
+    % --- HBR ---
+    st = runHbrProcedureLocal(st, scenario, policy);
+end
 
 satisfaction = evaluateAllUserSatisfactionLocal(st, scenario);
 result.avgSatisfaction = mean(satisfaction, 'omitnan');
@@ -474,6 +484,26 @@ for iu = subset
     nMoved = nMoved + 1;
 end
 ok = true;
+end
+
+function st = allocateInitialBeamPowerForHbrLocal(st, scenario)
+% Assign nominal/initial full-beam power to every HBR recovery beam (no SBR boost).
+% Candidate HBR edges are already filtered to non-shut recovery beams.
+st.recoveryPower_W = zeros(size(st.recoveryPower_W));
+if ~isfield(scenario, 'hbrEdges') || isempty(scenario.hbrEdges)
+    return;
+end
+P0 = scenario.fullBeamPower_W;
+nSat = size(st.recoveryPower_W, 1);
+nBeam = size(st.recoveryPower_W, 2);
+for e = 1:numel(scenario.hbrEdges)
+    iHelp = scenario.hbrEdges(e).iHelpSat;
+    bRec = scenario.hbrEdges(e).bRecovery;
+    if iHelp < 1 || iHelp > nSat || bRec < 1 || bRec > nBeam
+        continue;
+    end
+    st.recoveryPower_W(iHelp, bRec) = P0;
+end
 end
 
 function st = allocateRecoveryPowerLocal(st, scenario)

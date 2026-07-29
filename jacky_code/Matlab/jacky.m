@@ -100,7 +100,7 @@ AddUsersAroundSatellitesToSTK(root, satUserTargets, 1888, 30);
 
 
 %% ================== 四方法模擬 → Excel ==================
-% (1) Beam shutdown only   (2) PC + Tilt (Ren et al., Ku16)
+% (1) Beam shutdown only   (2) PC + Tilt (Jalali et al., Ku16)
 % (3) Relay only           (4) SAPR-R (Relay + middle safe-beam swap)
 % 共用 eval* / evalEnv；僅控制模型不同。下方 Evaluation 區讀這些 xlsx 畫圖一～三。
 
@@ -243,7 +243,7 @@ optsFig3.yAxisPercent = true;
 optsFig3.yLim = [0, 100];
 optsFig3.methodDefs(1) = struct('label', "Beam shutdown only", ...
     'excelPath', evalExcelPaths.backoffOnly, 'sourceType', "fullpower");
-optsFig3.methodDefs(2) = struct('label', "PC + Tilt (Ren et al.)", ...
+optsFig3.methodDefs(2) = struct('label', "PC + Tilt", ...
     'excelPath', evalExcelPaths.pcTilt, 'sourceType', "ku16_pc_tilt");
 optsFig3.methodDefs(3) = struct('label', "Only HBR", ...
     'excelPath', evalExcelPaths.relayOnly, 'sourceType', "fullpower");
@@ -375,120 +375,116 @@ else
 end
 
 
-
-%% ================== oneweb-like 用matlab模擬密集的場景 ==================
-% 純 MATLAB（不用 STK）：5 軌 × 10 星、-3 dB 16 beam、同軌/鄰軌各 50% overlap。
-% Ideal GSO 與 GS inline（赤道）。GS 在中軌 S05 正下方。
-%
-% 實驗目的：
-% 比較不同 graph-based edge selection 方法在相同 candidate graphs、相同 beam capacity、
-% 相同 EPFD constraint、相同 user distribution 下的 service recovery performance。
-%
-% 比較方法（四種）：
-%   1. Proposed Dynamic-Score Iterative Selection — 每輪重算 edge score（本文方法）
-%   2. Initial-Score Iterative Selection — score 只在 procedure 開始算一次，固定排序
-%   3. Max-User Iterative Selection — 每輪選可 reassociate 最多 users 的 edge
-%   4. Random Feasible Iterative Selection — 每輪隨機選可行 edge（30 次平均，固定 seed）
-%
-% User：GS 周邊 cluster（buildDenseGraphScenarioLocal 固定放 GS 附近）
-% 容量：整條流程 Shannon B·log2(1+SINR)（RunGraphSelectionComparisonDenseShannonLocal）
-% 輸出：graph_selection_comparison_shannon_results.mat/.csv
-%       fig_*_graph_selection_shannon.png
+%% ========= Helper availability: OneWeb polar density variants (MATLAB-only) =========
+% 獨立模擬模組：三種密度皆用同一 OneWeb 極軌殼層（1200 km / 87.9° / star Walker），
+% 只改 Walker 平面數 P 與每平面衛星數 S；16-beam / EPFD / helper 準則相同。
+%   OneWeb-like reference : 12 x 49 = 588（論文主模擬）
+%   High-density          : 36 x 74 = 2664（密度程度參考 Starlink 總規模）
+%   Low-density           :  8 x 36 =  288（平面與同軌間距皆比 reference 疏；總規模參考 Lightspeed）
+% Footprint 半角以 reference 同軌 ±1 半覆蓋校準，三密度共用。
+% 不使用 STK，也不修改上方主模擬的既有結果。
 if ~exist('file_path', 'var') || strlength(string(file_path)) == 0
     file_path = "C:\Users\jacky\Desktop\jacky_code\jacky_code\";
 end
+addpath(fullfile(file_path, 'Matlab', 'helper_availability'));
 addpath(fullfile(file_path, 'Matlab', 'jacky'));
 addpath(fullfile(file_path, 'Matlab', 'powertilt'));
-if ~exist('alt_km', 'var') || ~isfinite(alt_km)
-    alt_km = 1200;
+
+% --- 可調：helper 與 critical 關閉束重疊面積加總須 >= 此值 × 一條 beam 面積 ---
+helperMinOverlapBeamFrac = 1;   % 例：1.0=至少一條 beam；0.5=半條；改這裡即可
+helperTimeHalfWindow_s = 30;    % 對齊時刻 t=0 前後各 N 秒（共 2N+1 個 1 s slot）
+% --- 可調：只跑部分密度（"all" 或單一名稱 / 名稱陣列）---
+helperConstellationsToRun = "Low-density";   % 例："Low-density" 只跑低密度統計
+
+cfgHelper = config_helper_availability();
+cfgHelper = select_helper_constellations(cfgHelper, helperConstellationsToRun);
+cfgHelper.common.tStart_s = -helperTimeHalfWindow_s;
+cfgHelper.common.tEnd_s = helperTimeHalfWindow_s;
+cfgHelper.common.helperMinOverlapBeamFrac = helperMinOverlapBeamFrac;
+cfgHelper.common.helperMinOverlapArea_km2 = ...
+    helperMinOverlapBeamFrac * cfgHelper.common.oneBeamArea_km2;
+fprintf('[jacky] helperMinOverlapBeamFrac=%.3g -> min overlap=%.1f km^2 (oneBeam=%.1f)\n', ...
+    helperMinOverlapBeamFrac, cfgHelper.common.helperMinOverlapArea_km2, ...
+    cfgHelper.common.oneBeamArea_km2);
+fprintf('[jacky] time window: t=[%d,%d] s (±%d s around t=0)\n', ...
+    cfgHelper.common.tStart_s, cfgHelper.common.tEnd_s, helperTimeHalfWindow_s);
+
+[helperAvailabilitySummary, helperAvailabilityCases] = main_helper_availability(cfgHelper);
+disp(helperAvailabilitySummary);
+
+%% ========= Worst-EPFD scene: SSP + 16 beams (MATLAB-only) =========
+% 不做每個 time slot 的 helper 統計圖。只搜尋各星座最危險 EPFD 時刻，
+% 再於該瞬間辨識 critical / helper，畫 lon/lat 圖：每顆衛星星下點 + 16 條
+% 長方形 beam footprint（critical 關閉束另標色）。存到
+% helper_availability/results/figures 與 Matlab_data。
+if ~exist('file_path', 'var') || strlength(string(file_path)) == 0
+    file_path = "C:\Users\jacky\Desktop\jacky_code\jacky_code\";
 end
-if ~exist('evalGsLon_deg', 'var') || ~isfinite(evalGsLon_deg)
-    evalGsLon_deg = 120.4;
+addpath(fullfile(file_path, 'Matlab', 'helper_availability'));
+addpath(fullfile(file_path, 'Matlab', 'jacky'));
+addpath(fullfile(file_path, 'Matlab', 'powertilt'));
+
+% --- 可調（本段獨立生效；每次重建 config，避免沿用工作區舊星座）---
+helperMinOverlapBeamFrac = 1;   % 例：1.0=至少一條 beam；0.5=半條；改這裡即可
+% --- 可調：只跑部分密度（"all" 或單一名稱 / 名稱陣列）---
+helperPlotConstellationsToRun = "all";   % 例："Low-density" 只畫低密度 worst-EPFD 圖
+
+cfgHelper = config_helper_availability();   % 強制用目前的 reference/high/low-density
+cfgHelper = select_helper_constellations(cfgHelper, helperPlotConstellationsToRun);
+% worst-EPFD 搜尋維持 config 預設全窗（±120 s），只取感擾最大那一瞬間畫圖
+cfgHelper.common.helperMinOverlapBeamFrac = helperMinOverlapBeamFrac;
+cfgHelper.common.helperMinOverlapArea_km2 = ...
+    helperMinOverlapBeamFrac * cfgHelper.common.oneBeamArea_km2;
+fprintf('[jacky plot] helperMinOverlapBeamFrac=%.3g -> min overlap=%.1f km^2\n', ...
+    helperMinOverlapBeamFrac, cfgHelper.common.helperMinOverlapArea_km2);
+fprintf('[jacky plot] worst-EPFD search: t=[%d,%d] s (config default)\n', ...
+    cfgHelper.common.tStart_s, cfgHelper.common.tEnd_s);
+fprintf('[jacky plot] geometries: %s\n', strjoin(string(cellfun(@(c) c.name, ...
+    cfgHelper.constellations, 'UniformOutput', false)), ' | '));
+
+worstSlotSchematic = main_worst_slot_schematic(cfgHelper);
+
+
+
+
+%% ========= Computational overhead: PC+Tilt vs EABR (MATLAB-only) =========
+% 獨立模擬模組：不使用 STK。幾何用 OneWeb-like Walker（同 helper_availability）。
+% 先找 GS 最壞 EPFD 時刻 t_worst，再取前後 N 秒（每 1 s 一個 slot）。
+% 每個 slot 量一次 online execution time；圖上 bar=平均，黑 I=min–max。
+% PC+Tilt：重現的 Ku16 PC+Tilt 線上邏輯；EABR：SBR + 功率重配 + HBR。
+if ~exist('file_path', 'var') || strlength(string(file_path)) == 0
+    file_path = "C:\Users\jacky\Desktop\jacky_code\jacky_code\";
 end
-if ~exist('evalEpfdThr_dB_Baseline', 'var') || ~isfinite(evalEpfdThr_dB_Baseline)
-    evalEpfdThr_dB_Baseline = -173.4;
-end
-if ~exist('evalFullBeamPower_W', 'var') || ~isfinite(evalFullBeamPower_W)
-    evalFullBeamPower_W = 1.05;
-end
-if ~exist('evalUserDemand_Mbps', 'var') || ~isfinite(evalUserDemand_Mbps)
-    evalUserDemand_Mbps = 50;
-end
+addpath(fullfile(file_path, 'Matlab', 'overhead_evaluation'));
+addpath(fullfile(file_path, 'Matlab', 'jacky'));
+addpath(fullfile(file_path, 'Matlab', 'powertilt'));
+addpath(fullfile(file_path, 'Matlab', 'helper_availability'));
 
-optsDenseBase = struct();
-optsDenseBase.alt_km = alt_km;
-optsDenseBase.nOrbit = 7;
-optsDenseBase.nSatPerOrbit = 7;
-optsDenseBase.satSpacingMode = 'starlink_density';   % Starlink-like local satellite surface density
-optsDenseBase.starlinkDensityTotalSats = 1584;
-optsDenseBase.gsLat_deg = 0;
-optsDenseBase.orbitLon_deg = evalGsLon_deg;   % 中軌（P03）地面軌跡經度
-optsDenseBase.gsRelLon_deg = 0;               % GS 相對中軌的經度差 (deg)；0=在軌道正下方
-% GS 絕對經度 = orbitLon_deg + gsRelLon_deg；Ideal GSO 與 GS inline
-optsDenseBase.beamHalfEW_deg = 24.5;          % -3 dB
-optsDenseBase.beamHalfNS_total_deg = 25.0;    % -3 dB total NS half-angle (16 beams)
-optsDenseBase.fullBeamPower_W = evalFullBeamPower_W;
-optsDenseBase.epfdThr_dB = evalEpfdThr_dB_Baseline;
-optsDenseBase.showFigure = true;
-optsDenseBase.gsAnchorSatIdx = 4;             % 中軌第 4 顆（7 顆時置中）
+% --- 可調：t_worst 前後各 N 秒（共 2N 個 1 s slot；例 N=30 → 60 slots）---
+overheadSlotHalfWindow_s = 30;
+% --- 可調：PC+Tilt 線上 tilt 搜尋（overhead 量測用；滿意度比較仍用 RunKu16）---
+% 'max_only'      ：PC 有降功率時，只試 ±tiltMax（最快；候選最多 2 個）
+% 'coarse_to_fine'：先粗搜再局部細搜
+% 'exhaustive'    ：±tiltMax 固定步長全掃（最慢）
+overheadPcTiltSearchMode = 'max_only';
+overheadPcTiltCoarseStep_deg = 2.0;
+overheadPcTiltFineStep_deg = 0.5;
+overheadPcTiltFineHalfWidth_deg = 2.0;
+overheadPcTiltStep_deg = 2.0;   % exhaustive 模式時使用
 
-% GS 在中軌第 5 顆衛星正下方
-optsDenseUnderS5 = optsDenseBase;
-optsDenseUnderS5.gsPlacement = 'under_sat';
-optsDenseUnderS5.figurePath = char(fullfile(file_path, 'Matlab_data', ...
-    'DenseOverlap_EPFD_Shutdown_GS_under_S05.png'));
-denseEpfdResultUnderS5 = RunDenseOverlapEpfdShutdownSnapshotLocal(optsDenseUnderS5);
-fprintf('Dense snapshot (GS under S05): nCritical=%d -> %s\n', ...
-    denseEpfdResultUnderS5.nCritical, optsDenseUnderS5.figurePath);
-
-% --- Graph-based edge selection comparison (Ch.4) ---
-% 實驗目的：在相同 candidate graphs、beam capacity、EPFD constraint、user distribution 下，
-% 比較四種 SBR/HBR edge selection 的 service recovery performance。
-% 方法：Proposed Dynamic-Score | Initial-Score | Max-User | Random Feasible (30 runs)
-%
-% 需求：每位 user 於 [25, 100] Mbps 均勻隨機（userDemandSeed 可重現）
-% 建議設定（掃參）：nUsers=50，users 只撒在離 GS 最近 9 顆衛星 footprint 內
-%   recoveryPowerPoolMode='global'
-% 圖表：Fig.0 user+衛星分布；Fig.1 加權滿足度；Fig.2 平均滿足度（皆只統計 closed-beam 受影響 user）
-optsGraphSel = struct();
-optsGraphSel.file_path = file_path;
-optsGraphSel.alt_km = alt_km;
-optsGraphSel.orbitLon_deg = evalGsLon_deg;
-optsGraphSel.gsRelLon_deg = 0;
-optsGraphSel.gsPlacement = 'under_sat';
-optsGraphSel.nOrbit = 7;
-optsGraphSel.nSatPerOrbit = 7;
-optsGraphSel.satSpacingMode = 'starlink_density';
-optsGraphSel.starlinkDensityTotalSats = 1584;
-optsGraphSel.gsAnchorSatIdx = 4;
-optsGraphSel.fullBeamPower_W = evalFullBeamPower_W;
-optsGraphSel.epfdThr_dB = evalEpfdThr_dB_Baseline;
-optsGraphSel.recoveryPowerPoolMode = 'per_sat';
-optsGraphSel.nUsers = 600;
-optsGraphSel.userPlacementMode = 'nearest_sat_footprints';
-optsGraphSel.userPlacementNearestSatCount = 9;
-optsGraphSel.userSpreadLat_deg = 8;
-optsGraphSel.userSpreadLon_deg = 8;
-optsGraphSel.userDemandMode = 'random_uniform';
-optsGraphSel.userDemandMin_Mbps = 25;
-optsGraphSel.userDemandMax_Mbps = 150;
-optsGraphSel.userDemandSeed = 101;
-optsGraphSel.highPriorityRecoveryThreshold = 0.8;
-optsGraphSel.userSeed = 13;
-optsGraphSel.prioritySeed = 42;
-optsGraphSel.randomRuns = 30;
-optsGraphSel.randomSeed = 2026;
-optsGraphSel.showFigures = true;
-graphSelResult = RunGraphSelectionComparisonDenseShannonLocal(optsGraphSel);
-
-
-
-
-
-
-
-
-
+cfgOverhead = overhead_config();
+cfgOverhead.slotHalfWindow_s = overheadSlotHalfWindow_s;
+cfgOverhead.pcTiltSearchMode = overheadPcTiltSearchMode;
+cfgOverhead.pcTiltCoarseStep_deg = overheadPcTiltCoarseStep_deg;
+cfgOverhead.pcTiltFineStep_deg = overheadPcTiltFineStep_deg;
+cfgOverhead.pcTiltFineHalfWidth_deg = overheadPcTiltFineHalfWidth_deg;
+cfgOverhead.pcTiltStep_deg = overheadPcTiltStep_deg;
+fprintf('[jacky overhead] measurement window: t_worst ±%d s (%d slots)\n', ...
+    overheadSlotHalfWindow_s, 2 * overheadSlotHalfWindow_s);
+fprintf('[jacky overhead] PC+Tilt search: %s (maxTilt=±%.1f deg)\n', ...
+    overheadPcTiltSearchMode, cfgOverhead.pcTiltMax_deg);
+overheadResults = main_overhead_evaluation(cfgOverhead);
+disp(overheadResults.summaryTable);
 
 
 
