@@ -32,9 +32,9 @@ cfg = struct();
 % Disclaimer shown in the command window and README.
 % ------------------------------------------------------------------
 cfg.disclaimer = [ ...
-    'All three rows use the same OneWeb-like polar shell (1200 km, 87.9 deg); ', ...
+    'All rows use the same OneWeb-like polar shell (1200 km, 87.9 deg); ', ...
     'only Walker plane count and satellites-per-plane change to emulate ', ...
-    'reference / high / low density (high ~Starlink-scale, low ~Lightspeed-scale). ', ...
+    'reference / medium / high / low density. ', ...
     'Beam, power and EPFD model are the thesis model; results are illustrative.'];
 
 % ------------------------------------------------------------------
@@ -121,9 +121,11 @@ cfg.common = common;
 %   altitude 1200 km, inclination 87.9 deg, Walker star (RAAN over 180 deg).
 % Only plane count P and satellites-per-plane S change:
 %   (1) OneWeb-like reference — thesis main simulation (12 x 49 = 588)
-%   (2) High-density          — Starlink-scale total (~2650 sat):
+%   (2) Medium-density        — between reference and high (~1200 sat):
+%                               24 planes x 50 sats/plane
+%   (3) High-density          — Starlink-scale total (~2650 sat):
 %                               more planes (12->36) AND more sats/plane (49->74)
-%   (3) Low-density           — Lightspeed-scale total (~288 sat):
+%   (4) Low-density           — Lightspeed-scale total (~288 sat):
 %                               fewer planes (12->8) AND fewer sats/plane (49->36)
 % ------------------------------------------------------------------
 epoch = datetime(2025,12,16,12,0,0,'TimeZone','UTC');
@@ -143,30 +145,41 @@ c1.ref_shell_index   = 1;
 c1.ref_plane_index   = 3;               % thesis main sim uses plane 3
 c1.ref_sat_index     = 25;
 
-% (2) High-density — same polar shell, Starlink-scale satellite count (~2652).
-%     36 planes (3x OneWeb) x 74 sats/plane (~1.5x OneWeb) = 2664 total.
+% (2) Medium-density — same polar shell, ~1200 satellites (between reference and high).
+%     24 planes (2x OneWeb) x 50 sats/plane = 1200 total.
 c2 = struct();
-c2.name              = 'High-density';
+c2.name              = 'Medium-density';
 c2.epoch             = epoch;
 c2.isExampleGeometry = true;            % illustrative density variant
-c2.shells            = {mkShell(owAlt_km, owInc_deg, 36, 74, owWalker, owF)};
+c2.shells            = {mkShell(owAlt_km, owInc_deg, 24, 50, owWalker, owF)};
 c2.ref_shell_index   = 1;
 c2.ref_plane_index   = 1;
 c2.ref_sat_index     = 1;
 
-% (3) Low-density — same polar shell, Lightspeed-scale satellite count (~288).
-%     8 planes x 36 sats/plane = 288 total (both plane count and along-orbit
-%     spacing are reduced relative to the 12 x 49 reference).
+% (3) High-density — same polar shell, Starlink-scale satellite count (~2652).
+%     36 planes (3x OneWeb) x 74 sats/plane (~1.5x OneWeb) = 2664 total.
 c3 = struct();
-c3.name              = 'Low-density';
+c3.name              = 'High-density';
 c3.epoch             = epoch;
 c3.isExampleGeometry = true;            % illustrative density variant
-c3.shells            = {mkShell(owAlt_km, owInc_deg, 8, 36, owWalker, owF)};
+c3.shells            = {mkShell(owAlt_km, owInc_deg, 36, 74, owWalker, owF)};
 c3.ref_shell_index   = 1;
 c3.ref_plane_index   = 1;
 c3.ref_sat_index     = 1;
 
-cfg.constellations = {c1, c2, c3};
+% (4) Low-density — same polar shell, Lightspeed-scale satellite count (~288).
+%     8 planes x 36 sats/plane = 288 total (both plane count and along-orbit
+%     spacing are reduced relative to the 12 x 49 reference).
+c4 = struct();
+c4.name              = 'Low-density';
+c4.epoch             = epoch;
+c4.isExampleGeometry = true;            % illustrative density variant
+c4.shells            = {mkShell(owAlt_km, owInc_deg, 8, 36, owWalker, owF)};
+c4.ref_shell_index   = 1;
+c4.ref_plane_index   = 1;
+c4.ref_sat_index     = 1;
+
+cfg.constellations = {c1, c2, c3, c4};
 
 % ------------------------------------------------------------------
 % Calibrate shared beam size on OneWeb-like half-overlap, then attach.

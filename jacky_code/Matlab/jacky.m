@@ -168,6 +168,9 @@ jackyPlotDir = fullfile(file_path, 'Matlab', 'jacky');
 if isfolder(jackyPlotDir)
     addpath(jackyPlotDir);
 end
+% Excel-only replot: PlotFullPowerSweep* ignore arg-1 (no STK). Avoid bare
+% "root" when STK was not opened — MATLAB may resolve it to symbolic root().
+evalPlotRoot = [];
 if ~exist('evalCriticalSat', 'var') || strlength(string(evalCriticalSat)) == 0
     evalCriticalSat = "P03_S49";
 end
@@ -212,7 +215,7 @@ optsFig1.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
     numUsersPerSatPlot, 'P03S49_EPFD_afterShutdown_vsRelTime', '.png'));
 optsFig1.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
     numUsersPerSatPlot, 'P03S49_EPFD_afterShutdown_vsRelTime', '.xlsx'));
-PlotFullPowerSweepEpfdVsRelativeTime(root, optsFig1);
+PlotFullPowerSweepEpfdVsRelativeTime(evalPlotRoot, optsFig1);
 
 % --- 圖二：critical 衛星被關閉 beam 數（SAPR-R 單曲線）；X 軸與圖一相同 ---
 optsFig2 = struct();
@@ -228,7 +231,7 @@ optsFig2.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
     numUsersPerSatPlot, 'P03S49_ClosedCriticalBeams_vsRelTime', '.png'));
 optsFig2.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
     numUsersPerSatPlot, 'P03S49_ClosedCriticalBeams_vsRelTime', '.xlsx'));
-PlotFullPowerSweepClosedCriticalBeamsVsTime(root, optsFig2);
+PlotFullPowerSweepClosedCriticalBeamsVsTime(evalPlotRoot, optsFig2);
 
 % --- 圖三：四方法比較（P03_S49 平均 user 滿意度 vs 時間）；t=0 同圖一 ---
 % 單獨重跑本 cell 時，先依 numUsersPerSatPlot 重建 excel 路徑（避免 U30/U50 混用）。
@@ -257,7 +260,7 @@ optsFig3.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
 optsFig3.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
     numUsersPerSatPlot, 'P03S49_AvgUserSatisfaction_4MethodCompare', '.xlsx'));
 if isfile(evalExcelPaths.pcTilt)
-    PlotFullPowerSweepSatisfactionVsTimeCompare(root, optsFig3);
+    PlotFullPowerSweepSatisfactionVsTimeCompare(evalPlotRoot, optsFig3);
 else
     warning('jacky:MissingKu16TiltExcel', ...
         'Skip fig.3: missing %s. Re-run PC+Tilt simulation above.', evalExcelPaths.pcTilt);
@@ -286,7 +289,7 @@ optsFig4.figurePath = char(FullPowerSweepDataPathLocal(file_path, ...
 optsFig4.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
     numUsersPerSatPlot, 'P03S49_RelayUserCount_OnlyBPLR_vs_SAPR-R', '.xlsx'));
 if isfile(evalExcelPaths.relayOnly) && isfile(evalExcelPaths.saprR)
-    PlotFullPowerSweepRelayUserCountCompare(root, optsFig4);
+    PlotFullPowerSweepRelayUserCountCompare(evalPlotRoot, optsFig4);
 else
     warning('jacky:MissingFig4Excel', 'Skip fig.4: need RelayOnly and RelayWithMiddleSwap U%d xlsx.', ...
         numUsersPerSatPlot);
@@ -317,7 +320,7 @@ optsFig5.tablePath = char(FullPowerSweepDataPathLocal(file_path, ...
     numUsersPerSatPlot, 'P03S49_UserSatisfaction_CDF_3MethodCompare', '.xlsx'));
 if isfile(evalExcelPaths.relayOnly) && isfile(evalExcelPaths.saprR) && isfile(evalExcelPaths.pcTilt)
     try
-        PlotFullPowerSweepUserSatisfactionCdfCompare(root, optsFig5);
+        PlotFullPowerSweepUserSatisfactionCdfCompare(evalPlotRoot, optsFig5);
     catch ME
         if contains(ME.message, 'PerUser')
             warning('jacky:MissingPerUserSheet', ...
@@ -368,7 +371,7 @@ for iEpfdPlot = 1:numel(evalEpfdThr_dB_Matrix)
 end
 if nEpfdFig6 > 0
     optsFig6.referenceExcelPath = optsFig6.methodDefs(1).excelPath;
-    PlotFullPowerSweepSatisfactionVsTimeCompare(root, optsFig6);
+    PlotFullPowerSweepSatisfactionVsTimeCompare(evalPlotRoot, optsFig6);
     fprintf('Fig6 done: %d EPFD curves -> %s\n', nEpfdFig6, optsFig6.figurePath);
 else
     warning('jacky:MissingFig6Excel', 'Skip fig.6: no SAPR-R Excel for evalEpfdThr_dB_Matrix.');
@@ -378,7 +381,8 @@ end
 %% ========= Helper availability: OneWeb polar density variants (MATLAB-only) =========
 % 獨立模擬模組：三種密度皆用同一 OneWeb 極軌殼層（1200 km / 87.9° / star Walker），
 % 只改 Walker 平面數 P 與每平面衛星數 S；16-beam / EPFD / helper 準則相同。
-%   OneWeb-like reference : 12 x 49 = 588（論文主模擬）
+%   OneWeb-like reference : 12 x 49 =  588（論文主模擬）
+%   Medium-density        : 24 x 50 = 1200（介於 reference 與 high 之間）
 %   High-density          : 36 x 74 = 2664（密度程度參考 Starlink 總規模）
 %   Low-density           :  8 x 36 =  288（平面與同軌間距皆比 reference 疏；總規模參考 Lightspeed）
 % Footprint 半角以 reference 同軌 ±1 半覆蓋校準，三密度共用。
@@ -427,7 +431,7 @@ addpath(fullfile(file_path, 'Matlab', 'powertilt'));
 % --- 可調（本段獨立生效；每次重建 config，避免沿用工作區舊星座）---
 helperMinOverlapBeamFrac = 1;   % 例：1.0=至少一條 beam；0.5=半條；改這裡即可
 % --- 可調：只跑部分密度（"all" 或單一名稱 / 名稱陣列）---
-helperPlotConstellationsToRun = "all";   % 例："Low-density" 只畫低密度 worst-EPFD 圖
+helperPlotConstellationsToRun = "Medium-density";   % 例："Low-density" 只畫低密度 worst-EPFD 圖
 
 cfgHelper = config_helper_availability();   % 強制用目前的 reference/high/low-density
 cfgHelper = select_helper_constellations(cfgHelper, helperPlotConstellationsToRun);
