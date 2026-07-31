@@ -7,6 +7,27 @@ function Tplot = PlotFullPowerSweepClosedCriticalBeamsVsTime(~, opts)
 % Optional: sheetName ('Slot_EPFD'), criticalSatellite, relTimeWindowSec [-60 60],
 %           timeSegmentEdges (default [-60 -40 -20 0 20 40 60]), segmentAggregate mean|max,
 %           yLim [0 16], figurePath, tablePath, showFigure
+%
+% =====================================================================
+% 【中文說明】論文 Evaluation 圖二：ch5_FullPower_BeamShutdown
+%   「Number of closed beams on critical satellites over time」
+%
+% 畫什麼：長條圖，critical 衛星在各時間點為了滿足 EPFD 限制而必須關閉的 beam 數。
+%         越接近 worst EPFD slot（t=0）關越多束，離開後逐漸減少 ——
+%         說明關束需求是隨衛星-地面站幾何變化的，也就是服務救援的必要性來源。
+%
+% 資料來源：EABR sweep 的 Excel Slot_EPFD 分頁，橫軸 t=0 定義同圖一。
+% 縱軸上限預設 16（因為每顆衛星就是 16 束）。
+%
+% 分箱邏輯：預設把 [-60, 60] 秒切成 -60/-40/-20/0/20/40/60 共 7 根長條，
+%           每根取該區段內所有 slot 的平均（segmentAggregate='mean'）或最大值('max')。
+%           邊界用相鄰刻度的中點切分，所以每根長條代表以該刻度為中心的 ±10 s。
+%
+% 常用參數（jacky.m 的 optsFig2）：
+%   criticalSatellite  要統計的 critical 衛星，需與圖一、圖三同一顆
+%   timeSegmentEdges   長條位置；圖四用相同設定以便對照
+%   segmentAggregate   'mean' 或 'max'
+% =====================================================================
 
 if nargin < 2 || isempty(opts)
     opts = struct();
@@ -73,32 +94,33 @@ end
 [tPlot, ord] = sort(tPlot, 'ascend');
 yPlot = yPlot(ord);
 
+% ---- 逐根長條做分箱聚合：以每個刻度為中心，取相鄰刻度中點為邊界 ----
 edges = opts.timeSegmentEdges;
 nBar = numel(edges);
 xBar = edges;
 yBar = nan(nBar, 1);
 segAggregate = lower(string(opts.segmentAggregate));
 for k = 1:nBar
-    if k == 1
+    if k == 1   % 第一根：從視窗左界到「第一、二刻度的中點」
         lo = edges(1);
         hi = 0.5 * (edges(1) + edges(2));
         mask = tPlot >= lo - 1e-9 & tPlot < hi - 1e-9;
-    elseif k == nBar
+    elseif k == nBar   % 最後一根：從「倒數兩刻度的中點」到視窗右界
         lo = 0.5 * (edges(end - 1) + edges(end));
         hi = edges(end);
         mask = tPlot >= lo - 1e-9 & tPlot <= hi + 1e-9;
-    else
+    else               % 中間各根：前後刻度的中點之間
         lo = 0.5 * (edges(k - 1) + edges(k));
         hi = 0.5 * (edges(k) + edges(k + 1));
         mask = tPlot >= lo - 1e-9 & tPlot < hi - 1e-9;
     end
     vals = yPlot(mask);
     if isempty(vals)
-        yBar(k) = 0;
+        yBar(k) = 0;                            % 該區段無資料 → 視為沒關束
     elseif segAggregate == "max"
-        yBar(k) = max(vals, [], 'omitnan');
+        yBar(k) = max(vals, [], 'omitnan');     % 取區段內最嚴重的一個 slot
     else
-        yBar(k) = mean(vals, 'omitnan');
+        yBar(k) = mean(vals, 'omitnan');        % 論文預設：取區段平均
     end
 end
 

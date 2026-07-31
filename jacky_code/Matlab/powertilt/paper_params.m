@@ -6,6 +6,23 @@ function P = paper_params(beam_model)
 %
 % 对应论文 Table 1
 % ============================================================
+%
+% 【中文補充｜非常重要，不要跟 ku_epfd_params 搞混】
+%
+% 本檔是「Jalali et al., Joint Power and Tilt Control (OJVT 2023)」
+% 原始論文的參數表，用於**復現該篇論文的結果**，屬於 Ka 頻段：
+%   載波頻率 19.7 GHz、系統頻寬 200 MHz、LEO 最大增益 39.6 dBi
+%
+% 本碩論自己的模擬用的是另一組參數，在 jacky/ku_epfd_params.m，屬於 Ku 頻段：
+%   載波頻率 11.7 GHz、系統頻寬 250 MHz、EPFD 門檻 -173.4 dB(W/m²/40 kHz)
+%
+% 論文 Evaluation 章的 PC + Tilt baseline（圖三、圖五那條線）
+% 走的是 RunKu16BeamBaselineObservationLogExcel，吃的是 **ku_epfd_params**，
+% 也就是「把 Jalali 的方法搬到本論文的 Ku 頻段場景」下去比較，
+% 而不是直接引用他們 Ka 頻段的數字 —— 這樣四個方法才在同一組參數下公平比較。
+%
+% 本檔主要供 powertilt/ 資料夾裡的復現與驗證腳本使用
+% （Verify_*、Diagnose_*、Plot_Figure11/14 等）。
 
 %% ========== 物理常数 ==========
 P.kB = 1.380649e-23;  % 玻尔兹曼常数 (J/K)

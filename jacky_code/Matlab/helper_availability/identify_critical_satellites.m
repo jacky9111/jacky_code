@@ -29,13 +29,26 @@ function slot = identify_critical_satellites(visIdx, pos_vis_km, boresights_vis,
 %   slot.nShut        : total number of shut-down beams
 %
 % All aggregation is done in the linear domain; dB only for reporting.
+%
+% 【中文說明】單一 time slot 的 critical 衛星辨識。
+% 邏輯與主模擬 RunFullPowerAggregateShutdownSweepExcel 的關束步驟一致：
+% 先算所有可見衛星的每條 beam 對 GS 的 EPFD 貢獻，若總和超標，
+% 就依貢獻由大到小貪婪關束，直到 aggregate EPFD 回到門檻以下。
+%
+% 名詞對應論文：
+%   critical satellite  至少有一條 beam 被關掉的衛星
+%   closed beam         被關掉的那些 beam
+%   active / safe beam  仍然開著的 beam（可作為 helper recovery beam 的來源）
+%
+% 所有累加都在線性域進行，只有輸出報表時才轉 dB（避免 dB 相加的錯誤）。
 
 Nbeam = beam.Nbeam;
 nVis = numel(visIdx);
 fullPower_W = beam.fullBeamPower_W;
-threshold_lin = 10^(double(epfdThr_dB) / 10);
-linTol = threshold_lin * 1e-12;
+threshold_lin = 10^(double(epfdThr_dB) / 10);   % 門檻由 dB 轉線性
+linTol = threshold_lin * 1e-12;                 % 浮點比較容差
 
+% ---- 步驟 1：算出每顆可見衛星、每條 beam 對 GS 的 EPFD 貢獻 ----
 beamEpfdLin = zeros(nVis, Nbeam);
 for i = 1:nVis
     e = compute_beam_epfd(pos_vis_km(:, i), boresights_vis{i}, ...
@@ -43,6 +56,7 @@ for i = 1:nVis
     beamEpfdLin(i, :) = e.beam_lin(:).';
 end
 
+% ---- 步驟 2：若 aggregate EPFD 超標，貪婪關束直到合法 ----
 closedMask = false(nVis, Nbeam);
 aggBefore_lin = sum(beamEpfdLin(:));
 aggAfter_lin = aggBefore_lin;
@@ -50,13 +64,15 @@ nShut = 0;
 
 if aggAfter_lin > threshold_lin + linTol
     % Sort all beams by descending EPFD contribution, then shut greedily.
+    % 把「所有衛星的所有 beam」一起排序，干擾貢獻最大的先關
     [vals, order] = sort(beamEpfdLin(:), 'descend');
     for r = 1:numel(order)
         if aggAfter_lin <= threshold_lin + linTol
-            break;
+            break;   % 已經合法，不再關束
         end
         if vals(r) <= 0
             break;   % remaining beams contribute nothing
+                     % 剩下的 beam 貢獻為 0，再關也沒用
         end
         aggAfter_lin = aggAfter_lin - vals(r);
         closedMask(order(r)) = true;
@@ -64,6 +80,7 @@ if aggAfter_lin > threshold_lin + linTol
     end
 end
 
+% ---- 步驟 3：標記 critical 衛星（只要有任一條 beam 被關就算）----
 activeMask = ~closedMask;
 isCritical = any(closedMask, 2);
 

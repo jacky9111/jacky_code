@@ -1,6 +1,17 @@
 function measurement = measure_eabr_runtime(eabrScenarios, cfg)
 %MEASURE_EABR_RUNTIME Time EABR (SBR + allocation + HBR) once per time slot.
 % eabrScenarios: 1 x nSlot cell of scenarios (same users, evolving geometry).
+%
+% 【中文說明】量測 EABR 的「線上執行時間」。
+% 每個 slot 呼叫一次 runGraphSelectionPolicyLocal（SBR + 功率配置 + HBR），
+% 用 tic/toc 包住整個決策流程，得到該 slot 的執行時間 [ms]。
+%
+% eabrScenarios 是 1 x nSlot 的 cell，每個元素是該 slot 的場景快照：
+% user 位置固定不變，只有衛星幾何隨時間演進 —— 這樣量到的時間差異
+% 才純粹反映「救援決策複雜度」的變化，而不是 user 分佈的隨機波動。
+%
+% warmupRuns 先在第一個 slot 空跑幾次讓 MATLAB JIT 編譯完成，
+% 這些暖機數據會被丟棄，避免第一個 slot 的時間被高估。
 
 if ~iscell(eabrScenarios)
     eabrScenarios = {eabrScenarios};

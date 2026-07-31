@@ -5,6 +5,26 @@ function G_dB = gso_rx_gain_itu1428(phi_deg, D_m, lambda_m)
 %
 % 根据论文中的 Eq.(9) 和 ITU-R S.1428-1
 % ============================================================
+%
+% 【中文補充｜本論文中的角色】
+% 這支是全專案共用的 GSO 地球站接收天線場型，對應論文 Simulation Parameters
+% 表格中 GSO ground station 的「Antenna pattern: ITU-R S.1428」。
+%
+% 呼叫者包含：
+%   jacky/RunFullPowerAggregateShutdownSweepExcel（EABR 系列）
+%   jacky/RunKu16BeamBaselineObservationLogExcel（PC + Tilt）
+%   helper_availability/compute_beam_epfd
+%   overhead_evaluation/run_pc_tilt_online_existing_logic
+% 因為四個比較方法都用同一支，EPFD 的計算基準才是一致的。
+%
+% 輸入 phi_deg 是「從 GS 看出去，干擾源 LEO 與目標 GSO 之間的夾角」。
+% phi 越小 → 落在主瓣、增益越高 → 干擾越嚴重，這就是 critical period 的成因。
+%
+% D_m 用 60 cm 參考天線徑（論文 Table 的 Reference antenna diameter），
+% lambda_m 由載波頻率換算（Ku 11.7 GHz）。
+%
+% 【注意】本函式一次只接受一個純量 phi_deg（內部是 if/elseif 分段），
+% 不支援向量化輸入；呼叫端都是在迴圈中逐一呼叫。
 
 % 计算最大增益
 G_max_dB = 20*log10(D_m/lambda_m) + 7.7;

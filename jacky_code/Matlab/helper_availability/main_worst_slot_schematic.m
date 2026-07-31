@@ -10,6 +10,28 @@ function out = main_worst_slot_schematic(cfg)
 % Usage:
 %   out = main_worst_slot_schematic();
 % Subset rows with select_helper_constellations(cfg, "Low-density") before calling.
+%
+% =====================================================================
+% 【中文說明】產生論文 Evaluation 的圖：ch6_density_worst_epfd_coverage
+%   「Critical and helper satellite coverage at the worst EPFD slot
+%     under different satellite distribution densities」
+%   (a) Low-density  (b) OneWeb-like reference  (c) High-density
+%
+% 與 main_helper_availability 的差別：
+%   main_helper_availability   對「每一個 slot」都做 helper 統計 → 產生表格數字
+%   main_worst_slot_schematic  只找出「最危險的那一瞬間」畫一張圖 → 產生示意圖
+%
+% 流程：
+%   1. 在整個飛越窗（config 預設 ±120 s）掃描 aggregate EPFD，找出最大的時刻 t_worst
+%   2. 只在 t_worst 這一瞬間辨識 critical 衛星與其 helper 候選
+%   3. 畫經緯度平面圖：每顆衛星的星下點 + 16 條實際 ray/Earth 矩形足跡
+%      critical 衛星與其覆蓋區標紅、helper 標藍、GS 用黃色三角形
+%
+% 圖檔輸出到 helper_availability/results/figures 以及 jacky_code/Matlab_data。
+%
+% 【注意】圖上只呈現 worst EPFD 這一瞬間，所以圖中看到的 helper 數量
+% 可能與 Table 的「平均值」不同（論文內文也有特別說明這點）。
+% =====================================================================
 
 if nargin < 1 || isempty(cfg)
     moduleDir = fileparts(mfilename('fullpath'));

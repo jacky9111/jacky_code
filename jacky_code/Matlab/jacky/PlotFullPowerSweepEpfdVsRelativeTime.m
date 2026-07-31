@@ -13,6 +13,27 @@ function Tplot = PlotFullPowerSweepEpfdVsRelativeTime(~, opts)
 %   yLim_dB               [y1 y2] EPFD axis limits in dB, e.g. [-173.65 -173.4]
 %                         (with YDir reverse: more negative toward top)
 %   figurePath, tablePath, showFigure
+%
+% =====================================================================
+% 【中文說明】論文 Evaluation 圖一：ch5_epfd_constraint
+%   「Aggregate EPFD over time during the critical period」
+%
+% 畫什麼：紅線 = EPFD 限制（-173.4 dB(W/m²/40 kHz)）；
+%         黑線 = 套用 EABR 之後的 aggregate EPFD。
+%         用來證明 EABR 在做服務救援的同時，全程都沒有違反 EPFD 限制。
+%
+% 資料來源：EABR sweep 的 Excel（*_RelayWithMiddleSwap.xlsx）Slot_EPFD 分頁。
+% 橫軸 t=0：定義為「所有 beam 全開、還沒 backoff 前 EPFD 最高的那個 slot」
+%           （worst EPFD slot），由 FullPowerSweepSlotTimeOffsetLocal 計算。
+%
+% 常用參數（在 jacky.m 的 optsFig1 設定）：
+%   plotEpfdField    'after' = 關束後（論文用這個，代表合法）；'before' = 關束前
+%   relTimeWindowSec 橫軸範圍，論文用 [-60, 60] 秒
+%   yLim_dB          縱軸範圍；注意 YDir 設為 reverse，越負的值在越上方
+%   epfdThreshold_dB 紅色門檻線的位置
+%
+% 第一個輸入參數是 STK root，本函式用不到（純讀 Excel 畫圖），故寫成 ~。
+% =====================================================================
 
 if nargin < 2 || isempty(opts)
     opts = struct();
@@ -52,14 +73,15 @@ if isempty(T)
     error('No rows after geo filter in %s.', excelPath);
 end
 
+% 把絕對時間換算成「相對於 worst EPFD slot 的秒數」，讓 t=0 對齊各圖
 plotField = lower(string(opts.plotEpfdField));
 tRel = FullPowerSweepSlotTimeOffsetLocal(T, opts);
 switch plotField
     case "before"
-        yEpfd = double(T.gs_epfd_before_dB);
+        yEpfd = double(T.gs_epfd_before_dB);   % 未做任何抑制前的 EPFD（會超標）
         epfdLineName = 'Aggregate EPFD (before backoff)';
     case "after"
-        yEpfd = double(T.gs_epfd_after_dB);
+        yEpfd = double(T.gs_epfd_after_dB);    % 關束 + 救援後的 EPFD（論文圖一畫這條）
         epfdLineName = 'EABR';
     otherwise
         error('opts.plotEpfdField must be ''before'' or ''after''.');
@@ -84,6 +106,7 @@ end
 [tPlot, ord] = sort(tPlot, 'ascend');
 yPlot = yPlot(ord);
 
+% 保險檢查：關束後若仍有 slot 超過門檻，代表 backoff 邏輯沒把 EPFD 壓下來，出警告
 if plotField == "after" && ismember('epfd_legal_before_relay', T.Properties.VariableNames)
     legalMask = winMask;
     legalCol = double(T.epfd_legal_before_relay(legalMask));

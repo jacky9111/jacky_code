@@ -1,83 +1,51 @@
 function paths = plot_overhead_result(summaryTable, cfg)
-%PLOT_OVERHEAD_RESULT Grouped bars with black I-range.
+%PLOT_OVERHEAD_RESULT Grouped bars with black I-range: PC+Tilt vs EABR.
 % Bar height = average; I = configured percentile range (default p10–p90).
+%
+% 【中文說明】畫論文的 runtime_overhead_pc_tilt_vs_eabr 圖。
+%   X 軸 = 每星 user 數（30/50/70）
+%   長條高度 = 該負載下 60 個 slot 的平均執行時間
+%   黑色 I 形線 = 執行時間範圍（預設 p10–p90，見 summarize_runtime_ms.m）
+%
+% 實際繪圖與存檔交給共用的 plot_overhead_bar_chart.m，
+% 本檔只負責從 summaryTable 取出 PC+Tilt 與 EABR 兩組數據並指定顏色。
+% Only HBR vs EABR 那張圖由 plot_overhead_only_hbr_result.m 負責。
+%
+% 圖檔會同時輸出 .png（600 dpi）/ .fig / .pdf 三種格式到
+% cfg.figureExportPaths 列出的每個位置（results/ 與 jacky_code/Matlab_data/）。
+% 論文用的是 .pdf 向量圖。
 
-avgValues = [summaryTable.PcTiltAverageRuntimeMs, summaryTable.EABRAverageRuntimeMs];
-minValues = [summaryTable.PcTiltMinimumRuntimeMs, summaryTable.EABRMinimumRuntimeMs];
-maxValues = [summaryTable.PcTiltMaximumRuntimeMs, summaryTable.EABRMaximumRuntimeMs];
+opts = struct();
+opts.xTickLabels = string(summaryTable.UserLoad);
 
-fig = figure('Color','w', 'Units','inches', 'Position',[1 1 4.4 3.5]);
-ax = axes('Parent', fig);
-nLoad = size(avgValues, 1);
-xPos = 1 + (0:(nLoad - 1)) * 0.78;
-bars = bar(ax, xPos, avgValues, 0.62, 'grouped');
-bars(1).FaceColor = [0.18 0.45 0.70];
-bars(2).FaceColor = [0.88 0.40 0.16];
-bars(1).DisplayName = 'PC + Tilt';
-bars(2).DisplayName = 'EABR';
-set(ax, 'XTick', xPos, 'XTickLabel', string(summaryTable.UserLoad));
-xlim(ax, [xPos(1) - 0.55, xPos(end) + 0.55]);
-hold(ax, 'on');
-drawnow;
+% 系列 1：PC + Tilt（藍）；系列 2：EABR（橘）
+% 【顏色約定】EABR 在兩張 overhead 圖都用同一個橘色，方便論文並排對照。
+opts.series(1) = struct( ...
+    'label', 'PC + Tilt', ...
+    'color', [0.18 0.45 0.70], ...
+    'avg',   summaryTable.PcTiltAverageRuntimeMs, ...
+    'low',   summaryTable.PcTiltMinimumRuntimeMs, ...
+    'high',  summaryTable.PcTiltMaximumRuntimeMs);
+opts.series(2) = struct( ...
+    'label', 'EABR', ...
+    'color', [0.88 0.40 0.16], ...
+    'avg',   summaryTable.EABRAverageRuntimeMs, ...
+    'low',   summaryTable.EABRMinimumRuntimeMs, ...
+    'high',  summaryTable.EABRMaximumRuntimeMs);
 
-errNeg = max(avgValues - minValues, 0);
-errPos = max(maxValues - avgValues, 0);
-for iMethod = 1:size(avgValues, 2)
-    x = bars(iMethod).XEndPoints(:);
-    y = avgValues(:, iMethod);
-    eb = errorbar(ax, x, y, errNeg(:, iMethod), errPos(:, iMethod), ...
-        'LineStyle', 'none', 'Color', 'k', 'LineWidth', 1.1, ...
-        'CapSize', 8);
-    eb.HandleVisibility = 'off';
+opts.figureBases = resolveFigureBasesLocal(cfg);
+paths = plot_overhead_bar_chart(opts);
 end
 
-yTop = max(maxValues, [], 'all');
-if ~isfinite(yTop) || yTop <= 0
-    yTop = 1;
-end
-
-xlabel(ax, 'Number of users per satellite');
-ylabel(ax, 'Online execution time (ms)');
-legend(ax, [bars(1), bars(2)], {'PC + Tilt', 'EABR'}, ...
-    'Location', 'northwest', 'Box', 'on');
-grid(ax, 'on');
-box(ax, 'on');
-ax.FontName = 'Times New Roman';
-ax.FontSize = 10;
-ax.LineWidth = 0.8;
-ylim(ax, [0, yTop * 1.18 + eps]);
-ax.Units = 'normalized';
-ax.Position = [0.13 0.20 0.80 0.72];
-hold(ax, 'off');
-drawnow;
-
+% ----------------------------------------------------------------------
+function figureBases = resolveFigureBasesLocal(cfg)
+% 決定要輸出到哪些位置：優先用 cfg.figureExportPaths（results/ + Matlab_data/），
+% 其次是 matlabDataFigureBase，最後退回單一 figureBasePath。
 figureBases = {cfg.figureBasePath};
 if isfield(cfg, 'figureExportPaths') && ~isempty(cfg.figureExportPaths)
     figureBases = cfg.figureExportPaths;
 elseif isfield(cfg, 'matlabDataFigureBase') && strlength(string(cfg.matlabDataFigureBase)) > 0
     figureBases = unique([string(cfg.figureBasePath), string(cfg.matlabDataFigureBase)], 'stable');
     figureBases = cellstr(figureBases);
-end
-
-paths = struct('png', {{}}, 'fig', {{}}, 'pdf', {{}});
-paths.png = strings(0, 1);
-paths.fig = strings(0, 1);
-paths.pdf = strings(0, 1);
-set(fig, 'Color', 'w', 'InvertHardcopy', 'off', 'PaperPositionMode', 'auto');
-for iBase = 1:numel(figureBases)
-    base = char(figureBases{iBase});
-    outDir = fileparts(base);
-    if strlength(string(outDir)) > 0 && ~exist(outDir, 'dir')
-        mkdir(outDir);
-    end
-    pngPath = [base '.png'];
-    figPath = [base '.fig'];
-    pdfPath = [base '.pdf'];
-    print(fig, pngPath, '-dpng', '-r600');
-    savefig(fig, figPath);
-    print(fig, pdfPath, '-dpdf', '-painters');
-    paths.png(end+1, 1) = string(pngPath); %#ok<AGROW>
-    paths.fig(end+1, 1) = string(figPath); %#ok<AGROW>
-    paths.pdf(end+1, 1) = string(pdfPath); %#ok<AGROW>
 end
 end

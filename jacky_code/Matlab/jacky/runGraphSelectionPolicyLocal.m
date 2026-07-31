@@ -6,6 +6,30 @@ function result = runGraphSelectionPolicyLocal(scenario, policy, rngSeed)
 % Key baseline distinction (see runSbrProcedureLocal / runHbrProcedureLocal):
 %   dynamic  — recompute edge score every selection round
 %   initial  — score once at procedure start, fixed sort, still iterative updates
+%
+% =====================================================================
+% 【中文說明】EABR 演算法本體（純 MATLAB，不需要 STK）
+%
+% 論文 Method 章的三個步驟就寫在下面的 if/else 裡：
+%   1. SBR（Safe-Beam Reassociation）
+%      在候選圖上逐輪挑邊，把 helper 自家 user 換到安全束，釋放功率
+%   2. EPFD-constrained power allocation
+%      把釋放出的功率配給 helper recovery beam，且不得讓 EPFD 超標
+%   3. HBR（Helper-Beam Reassociation）
+%      把關閉束底下的 user 接到 helper recovery beam
+%
+% scenario.onlyHbrWithInitialPower = true 時只跑步驟 3，
+% 且 recovery beam 只能用「預設功率」—— 這就是論文的 Only HBR baseline。
+%
+% policy 決定候選圖上「每輪要挑哪條邊」：
+%   'dynamic'   每輪重算分數再挑（本論文提出的做法）
+%   'initial'   只在開始時算一次分數，之後固定排序
+%   'max_user'  永遠挑能服務最多 user 的邊
+%   'random'    隨機挑（需要 rngSeed 才可重現）
+%
+% 這支同時被 overhead_evaluation 模組拿來量測 EABR 的線上執行時間
+% （result.runtime_s 就是論文 overhead 圖的原始數據來源）。
+% =====================================================================
 
 if nargin >= 3 && isfinite(rngSeed)
     rng(rngSeed);
@@ -21,21 +45,30 @@ onlyHbrInitial = isfield(scenario, 'onlyHbrWithInitialPower') && ...
 if onlyHbrInitial
     % Only HBR: skip SBR / released-power boost; each recovery beam uses
     % its nominal/initial full-beam power.
+    % 【Only HBR baseline】跳過 SBR 與功率釋放，recovery beam 只能用預設功率，
+    % 所以在高負載時會受限於 helper 的既有功率 —— 這正是論文要對比的限制。
     st = allocateInitialBeamPowerForHbrLocal(st, scenario);
     st = runHbrProcedureLocal(st, scenario, policy);
 else
     % --- SBR: iterative edge selection ---
     % Proposed (dynamic): recompute edge score every round.
     % Initial-score: compute score once at procedure start; fixed sort, no rescore.
+    % 【EABR 步驟 1】SBR：在 safe-release 候選圖上逐輪挑邊，
+    % 每挑一條就更新圖的狀態，把 helper 自家 user 換到安全束以釋放功率。
     st = runSbrProcedureLocal(st, scenario, policy);
 
     % Released power allocation to helper recovery beams.
+    % 【EABR 步驟 2】把 SBR 釋放出的功率配給 helper recovery beam，
+    % 配置過程受 EPFD 限制約束，確保救援後 aggregate EPFD 仍合法。
     st = allocateRecoveryPowerLocal(st, scenario);
 
     % --- HBR ---
+    % 【EABR 步驟 3】HBR：把 critical 衛星關閉束底下的 user
+    % 接到有覆蓋、且已取得足夠功率的 helper recovery beam。
     st = runHbrProcedureLocal(st, scenario, policy);
 end
 
+% 逐 user 算滿意度 min(1, 取得速率 / 需求速率)，再彙整成各項指標
 satisfaction = evaluateAllUserSatisfactionLocal(st, scenario);
 result.avgSatisfaction = mean(satisfaction, 'omitnan');
 result.avgCriticalUserSatisfaction = criticalUserSatisfactionMetricLocal(st, scenario, satisfaction);

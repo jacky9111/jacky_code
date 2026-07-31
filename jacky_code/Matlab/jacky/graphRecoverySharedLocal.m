@@ -1,5 +1,18 @@
 function out = graphRecoverySharedLocal(action, varargin)
 % graphRecoverySharedLocal  Shared helpers for graph-based SBR/HBR simulation.
+%
+% 【中文說明】SBR / HBR 圖形化模擬共用的幾何與通訊工具集合。
+% 用單一入口 + action 字串分派，是為了讓這些小工具能被
+% runGraphSelectionPolicyLocal、overhead_evaluation 等多處共用，
+% 又不必在資料夾裡散落十幾個檔案。
+%
+% 可用的 action：
+%   "usercovered"     判斷某個 user 是否落在指定 beam 的覆蓋範圍內
+%   "satisfaction"    算某個 user 掛在某條 beam 上時的滿意度
+%   "footprintrect"   算一條 beam 在地面的矩形足跡
+%   "beamsoverlap"    判斷兩條 beam 的足跡是否重疊（helper 資格的關鍵）
+%   "userinfootprint" 判斷 user 是否落在足跡多邊形內
+%   "groundxyz"       經緯度 → 地心直角座標 [km]
 switch lower(string(action))
     case "usercovered"
         out = userCoveredByBeamGraph(varargin{:});
@@ -19,19 +32,23 @@ end
 end
 
 function tf = userCoveredByBeamGraph(satGeomOne, beamIdx, P_user_km, beamHalfEW_deg, beamHalfNS_deg)
+% 判斷 user 是否落在指定 beam 的矩形覆蓋內：
+% 把「衛星 → user」的方向向量投影到 beam 的本體座標系，
+% 分別算出水平/垂直離軸角，再與 beam 半角比較。
 P_leo_km = satGeomOne.P_leo_km;
-b_hat = satGeomOne.b_all(:, beamIdx);
-c_axis = satGeomOne.c_axis;
-v_user_km = P_user_km(:) - P_leo_km(:);
+b_hat = satGeomOne.b_all(:, beamIdx);      % 該 beam 的指向單位向量
+c_axis = satGeomOne.c_axis;                % beam 座標系的水平參考軸
+v_user_km = P_user_km(:) - P_leo_km(:);    % 衛星指向 user 的向量
 if norm(v_user_km) * 1000 < 1
-    tf = false;
+    tf = false;                            % user 與衛星幾乎重合 → 視為無效
     return;
 end
 d_hat = v_user_km / max(norm(v_user_km), eps);
-t_axis = cross(c_axis, b_hat);
+t_axis = cross(c_axis, b_hat);             % 垂直參考軸 = c × b
 t_axis = t_axis / max(norm(t_axis), eps);
-th_h = atan2d(dot(d_hat, c_axis), dot(d_hat, b_hat));
-th_v = atan2d(dot(d_hat, t_axis), dot(d_hat, b_hat));
+th_h = atan2d(dot(d_hat, c_axis), dot(d_hat, b_hat));   % 水平離軸角 [deg]
+th_v = atan2d(dot(d_hat, t_axis), dot(d_hat, b_hat));   % 垂直離軸角 [deg]
+% 兩個方向都在半角內才算被覆蓋（矩形波束）
 tf = abs(th_h) <= beamHalfEW_deg && abs(th_v) <= beamHalfNS_deg;
 end
 

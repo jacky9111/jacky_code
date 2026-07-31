@@ -3,6 +3,20 @@ function decision = run_pc_tilt_online_existing_logic(input)
 % The control flow and equations mirror RunKu16BeamBaselineObservationLogExcel:
 % load-aware initial power, beam-level EPFD power control, then the signed
 % tilt grid on the configured critical satellite.
+%
+% 【中文說明】把 PC + Tilt 的線上決策邏輯從 RunKu16BeamBaselineObservationLogExcel
+% 抽出來的獨立版本，專供 overhead 量測使用（控制流程與公式與原版一致）。
+%
+% 為什麼要抽出來？原版跟 STK 讀取、Excel 寫檔綁在一起，
+% 直接計時會把 I/O 時間也算進去，量不到真正的「線上決策」成本。
+%
+% 三個步驟：
+%   1. kappa 計算：每條 beam 對 GS 的 EPFD 敏感度係數
+%   2. powerControlLocal：依 EPFD 壓力調降各 beam 功率（PC 部分）
+%   3. 傾斜角搜尋：對 critical 衛星試不同 tilt，取使用者滿意度總和最高者（Tilt 部分）
+%
+% 傾斜角搜尋策略由 input.tiltSearchMode 決定（見 overhead_config.m 的說明），
+% 這是決定 PC+Tilt 執行時間的主要因素。
 
 P = input.P;
 nSat = size(input.satPos_km, 2);

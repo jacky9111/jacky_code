@@ -8,6 +8,30 @@ function Tplot = PlotFullPowerSweepSatisfactionVsTimeCompare(~, opts)
 %   opts.methodDefs — label, excelPath, sourceType ('fullpower'|'ku16_pc_tilt')
 %
 % Optional: recordSatellite (default P03_S49), relTimeWindowSec, yLim, yAxisPercent
+%
+% =====================================================================
+% 【中文說明】本函式同時服務論文的兩張圖：
+%
+%  ● 圖三 ch5_U{30,50,70}_AvgUserSatisfaction_4MethodCompare
+%    「Average user satisfaction of different interference mitigation methods」
+%    四條線 = Beam shutdown only / PC + Tilt / Only HBR / EABR，
+%    在同一個 user 負載下比平均滿意度隨時間的變化。
+%
+%  ● 圖六 ch5_U70_EABR_AvgUserSatisfaction_EpfdCompare
+%    「Average user satisfaction of EABR under different EPFD limits」
+%    這時 methodDefs 每一項換成「同一個 EABR、不同 EPFD 門檻的 Excel」，
+%    幾條門檻就畫幾條線（jacky.m 的圖六迴圈負責組出 methodDefs）。
+%
+% 滿意度定義：min(1, 實際取得速率 / 需求速率 50 Mbps)，
+%             統計對象是 recordSatellite 的 home cohort（原本歸屬該星的 user）。
+%
+% methodDefs 每一項的 sourceType 決定怎麼讀 Excel：
+%   'fullpower'      → Beam shutdown only / Only HBR / EABR 的 sweep 檔
+%   'ku16_pc_tilt'   → PC + Tilt 的 Ku16 baseline 檔（欄位格式不同）
+%
+% referenceExcelPath 只用來定義 t=0（worst EPFD slot），
+% 所有方法共用同一個 t=0，橫軸才對得起來。
+% =====================================================================
 
 if nargin < 2 || isempty(opts)
     opts = struct();
@@ -35,6 +59,7 @@ end
 
 win = double(opts.relTimeWindowSec(:)).';
 
+% 預設配色（依 methodDefs 順序取用）：黑 / 藍 / 橘 / 綠
 nMethod = numel(opts.methodDefs);
 if ~isfield(opts, 'colors') || isempty(opts.colors)
     cmap = [0 0 0; 0 0.45 0.74; 0.85 0.33 0.10; 0.47 0.67 0.19];

@@ -1,8 +1,26 @@
+% =====================================================================
+% jacky.m — 論文主流程（EABR：EPFD-Aware Beam Reassociation for Service Recovery）
+% ---------------------------------------------------------------------
+% 本檔是「一鍵驅動」腳本，用 MATLAB cell（%%）分段，請用 Ctrl+Enter 逐段執行，
+% 不要整支按 F5（前段要開 STK、後段純 MATLAB，混跑會出錯）。
+%
+% 段落順序與論文 Evaluation（chapter6）的對應：
+%   1. 連線 STK → 建 Walker 星座 → 建 beam / 地面站 / user   （Simulation Setup）
+%   2. 四方法 sweep → Excel                                  （Compared Schemes）
+%   3. Evaluation 區：讀 Excel 畫圖一～圖六                    （Evaluation Results）
+%   4. Helper availability（不用 STK）                        （不同星座密度的 helper 可用性）
+%   5. Worst-EPFD 場景圖（不用 STK）                          （最壞 EPFD 時刻 SSP+16 beam 圖）
+%   6. Computational overhead（不用 STK）                     （線上計算負擔）
+%
+% 詳細操作與參數說明請看專案根目錄的 README.md。
+% =====================================================================
+
 %% 重置 Command window 與 Workspace
 clear;
 clc;
-hello world 
+
 %% 與STK連線
+% 需先手動開啟 STK 12 並載入/新建場景，本段只是抓取已在執行的 STK COM 物件。
 disp("連接STK");
 con = actxGetRunningServer('STK12.application');
 root = con.Personality2;
@@ -451,11 +469,19 @@ worstSlotSchematic = main_worst_slot_schematic(cfgHelper);
 
 
 
-%% ========= Computational overhead: PC+Tilt vs EABR (MATLAB-only) =========
+%% ========= Computational overhead: Only HBR / PC+Tilt vs EABR (MATLAB-only) =========
 % 獨立模擬模組：不使用 STK。幾何用 OneWeb-like Walker（同 helper_availability）。
 % 先找 GS 最壞 EPFD 時刻 t_worst，再取前後 N 秒（每 1 s 一個 slot）。
-% 每個 slot 量一次 online execution time；圖上 bar=平均，黑 I=min–max。
-% PC+Tilt：重現的 Ku16 PC+Tilt 線上邏輯；EABR：SBR + 功率重配 + HBR。
+% 每個 slot 量一次 online execution time；圖上 bar=平均，黑 I=執行時間範圍。
+%
+% 三個方法都跑在同一組場景上（同幾何、同 user、同關閉束），確保公平：
+%   Only HBR：runGraphSelectionPolicyLocal + onlyHbrWithInitialPower（跳過 SBR）
+%   PC+Tilt ：重現的 Ku16 PC+Tilt 線上邏輯
+%   EABR    ：SBR + 功率重配 + HBR
+%
+% 本段一次產生論文的兩張 overhead 圖（存到 results/ 與 Matlab_data/）：
+%   runtime_overhead_pc_tilt_vs_eabr.{png,fig,pdf}    → 論文 Fig. PC+Tilt vs EABR
+%   runtime_overhead_only_hbr_vs_eabr.{png,fig,pdf}   → 論文 ch5_overhead_only_hbr_vs_eabr
 if ~exist('file_path', 'var') || strlength(string(file_path)) == 0
     file_path = "C:\Users\jacky\Desktop\jacky_code\jacky_code\";
 end
@@ -466,6 +492,10 @@ addpath(fullfile(file_path, 'Matlab', 'helper_availability'));
 
 % --- 可調：t_worst 前後各 N 秒（共 2N 個 1 s slot；例 N=30 → 60 slots）---
 overheadSlotHalfWindow_s = 30;
+% --- 可調：是否一併量測 Only HBR（多產生 Only HBR vs EABR 那張圖）---
+% true  → 每個負載多跑一輪 Only HBR，總時間約增加三分之一
+% false → 只量 PC+Tilt 與 EABR
+overheadMeasureOnlyHbr = true;
 % --- 可調：PC+Tilt 線上 tilt 搜尋（overhead 量測用；滿意度比較仍用 RunKu16）---
 % 'max_only'      ：PC 有降功率時，只試 ±tiltMax（最快；候選最多 2 個）
 % 'coarse_to_fine'：先粗搜再局部細搜
@@ -478,6 +508,7 @@ overheadPcTiltStep_deg = 2.0;   % exhaustive 模式時使用
 
 cfgOverhead = overhead_config();
 cfgOverhead.slotHalfWindow_s = overheadSlotHalfWindow_s;
+cfgOverhead.measureOnlyHbr = overheadMeasureOnlyHbr;
 cfgOverhead.pcTiltSearchMode = overheadPcTiltSearchMode;
 cfgOverhead.pcTiltCoarseStep_deg = overheadPcTiltCoarseStep_deg;
 cfgOverhead.pcTiltFineStep_deg = overheadPcTiltFineStep_deg;
@@ -487,6 +518,11 @@ fprintf('[jacky overhead] measurement window: t_worst ±%d s (%d slots)\n', ...
     overheadSlotHalfWindow_s, 2 * overheadSlotHalfWindow_s);
 fprintf('[jacky overhead] PC+Tilt search: %s (maxTilt=±%.1f deg)\n', ...
     overheadPcTiltSearchMode, cfgOverhead.pcTiltMax_deg);
+if overheadMeasureOnlyHbr
+    fprintf('[jacky overhead] methods: Only HBR + PC+Tilt + EABR (2 figures)\n');
+else
+    fprintf('[jacky overhead] methods: PC+Tilt + EABR (1 figure)\n');
+end
 overheadResults = main_overhead_evaluation(cfgOverhead);
 disp(overheadResults.summaryTable);
 

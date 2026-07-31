@@ -3,18 +3,35 @@ function caseData = prepare_overhead_case(cfg, userLoad)
 % Pure MATLAB: find t_worst = argmax(aggregate EPFD before shutdown) near the
 % GS flyover, then build one scenario per 1-s slot in
 % [t_worst-30, t_worst+29] (60 slots). All of this is outside online timing.
+%
+% 【中文說明】為一種 user 負載準備量測所需的所有場景快照。
+%
+% 【關鍵設計】這裡做的所有事情都「不列入計時」——
+% 建幾何、找 t_worst、灑 user、預先算好每個 slot 的衛星位置與 beam 指向，
+% 全部在計時開始前完成。這樣 measure_* 量到的才是純粹的「線上決策時間」，
+% 不會混入離線前處理的成本，符合論文對 on-orbit computational overhead 的定義。
+%
+% 流程：
+%   1. 建立對齊過的 OneWeb-like Walker 幾何（t=0 時參考衛星在 GS 正上方）
+%   2. 在 ±120 s 內掃描「關束前的 aggregate EPFD」，取最大值的時刻為 t_worst
+%   3. 在 t_worst 這一瞬間固定住「局部衛星集合」與 critical 衛星，
+%      整個量測窗都追蹤同一批衛星（避免衛星進出集合造成計算量跳動）
+%   4. 依 userLoad 灑 user（位置固定不隨時間移動）
+%   5. 為 [t_worst-30, t_worst+29] 每個 slot 各做一份場景快照
 
 validateattributes(userLoad, {'numeric'}, {'scalar','integer','positive'});
 
 addpath(fullfile(cfg.matlabDir, 'jacky'));
 addpath(fullfile(cfg.matlabDir, 'powertilt'));
 addpath(fullfile(cfg.matlabDir, 'helper_availability'));
-rng(cfg.randomSeed, 'twister');
+rng(cfg.randomSeed, 'twister');   % 固定種子 → 三種負載的 user 分佈可重現
 
+% 步驟 1-2：建幾何並找出最壞 EPFD 時刻
 [geom, common, pitchOffsets_deg] = buildAlignedWalkerLocal(cfg);
 [tWorst_s, searchT_s, searchEpfd_dB] = findWorstEpfdTimeLocal( ...
     geom, common, pitchOffsets_deg, cfg);
 
+% 量測窗：t_worst 前 30 s 到後 29 s，共 60 個 1 秒 slot
 tRel_s = (-cfg.slotHalfWindow_s):cfg.slotStep_s:(cfg.slotHalfWindow_s - cfg.slotStep_s);
 tSlots_s = tWorst_s + tRel_s;
 nSlot = numel(tSlots_s);

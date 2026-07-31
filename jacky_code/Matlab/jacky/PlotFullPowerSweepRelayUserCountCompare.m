@@ -16,6 +16,25 @@ function Tplot = PlotFullPowerSweepRelayUserCountCompare(~, opts)
 %   relaySuccessThreshold (default 0.9, for 'satisfied')
 %   segmentAggregate — 'mean' | 'sum' (default 'mean')
 %   yLabel — default 'Number of recovered closed-beam users'
+%
+% =====================================================================
+% 【中文說明】論文 Evaluation 圖四：ch5_U{50,70}_RecoveredUserCount
+%   「Number of recovered closed-beam users achieved by Only HBR and EABR」
+%
+% 畫什麼：分組長條圖，比較 Only HBR 與 EABR 各自「成功救回幾個關閉束下的 user」。
+%         這張圖是圖三（平均滿意度）的原因解釋 ——
+%         EABR 之所以滿意度較高，是因為它靠 SBR 釋放出 helper 的可用功率，
+%         所以能救回更多 user，差距在 worst EPFD slot 附近最明顯。
+%
+% 論文只畫 U50 與 U70：U30 是低負載，helper 預設功率就夠用，兩法差異不明顯。
+%
+% 關鍵參數（jacky.m 的 optsFig4）：
+%   relayUserMetric        'satisfied' = 只算「接手後滿意度達標」的 user（論文用這個）
+%                          'assigned'  = 只要被指派給 helper 就算，不管服務品質
+%   relaySuccessThreshold  上面 'satisfied' 的門檻，預設 0.9
+%   timeSegmentEdges       與圖二相同，方便兩張圖對照
+%   yLim                   通常設 [0, U]，U = 本次 sweep 的每星 user 數
+% =====================================================================
 
 if nargin < 2 || isempty(opts)
     opts = struct();

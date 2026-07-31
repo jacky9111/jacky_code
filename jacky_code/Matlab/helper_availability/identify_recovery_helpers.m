@@ -30,19 +30,43 @@ function slotHelper = identify_recovery_helpers(slot, fpCell, satNames, common)
 %   .nClosedBeamWithHelper   : closed-beam instances with >=1 qualifying helper
 %
 % Units: km, km^2, deg.
+%
+% =====================================================================
+% 【中文說明】helper 衛星的判定準則 —— 這是整個 helper availability 實驗的核心。
+%
+% 判定條件：一顆「可見、非 critical、且至少有一條 active beam」的衛星，
+% 只有當「它的 active beam 與該 critical 衛星的 closed beam 的足跡重疊面積總和」
+% 達到 common.helperMinOverlapArea_km2（預設 = 1 條標稱 beam 的面積）時，
+% 才算是這顆 critical 衛星的 recovery-capable helper。
+%
+% 為什麼要設面積門檻？因為兩條 beam 只在邊緣「擦到一點點」時，
+% 實務上根本無法承接換手，若不設門檻會把這種無效重疊也算成 helper，
+% 讓 helper 數量嚴重高估。common.helperMinOverlapBeamFrac 就是調這個門檻的旋鈕
+% （1.0 = 至少一整條 beam 的面積；0.5 = 半條）。
+%
+% 這裡只計算「可用於 HBR 的 helper」，也就是 recovery beam 必須覆蓋到關閉束；
+% 只能用於 SBR（安全束釋放）的重疊不算在內。
+%
+% 為了效率，先用「足跡半徑」做便宜的預篩（兩個足跡中心距離 > 半徑和就不可能重疊），
+% 通過預篩才做真正的多邊形交集面積計算。
+% =====================================================================
 
 Re_km = common.Re_km;
 pairTol = common.overlapAreaTol_km2;          % ignore numerical dust per pair
+                                              % 單一 beam 配對的重疊小於此值視為數值誤差
 if isfield(common, 'helperMinOverlapArea_km2') && isfinite(common.helperMinOverlapArea_km2)
-    helperAreaThr = common.helperMinOverlapArea_km2;
+    helperAreaThr = common.helperMinOverlapArea_km2;   % helper 資格的重疊面積門檻
 else
     helperAreaThr = pairTol;                  % fallback: legacy tiny-overlap rule
+                                              % 沒設門檻時退回舊行為（只要有一點重疊就算）
 end
 nVis = numel(slot.visIdx);
 Nbeam = size(slot.closedMask, 2);
 
 % Precompute per-visible-satellite, per-beam footprint radius [km] (max
 % great-circle distance center->boundary) for a cheap overlap pre-filter.
+% 預先算好每條 beam 足跡的「外接半徑」（中心到邊界的最大大圓距離），
+% 用來做重疊的快速預篩，避免對每一對 beam 都做昂貴的多邊形交集運算。
 fpRadius_km = zeros(nVis, Nbeam);
 for i = 1:nVis
     fp = fpCell{i};

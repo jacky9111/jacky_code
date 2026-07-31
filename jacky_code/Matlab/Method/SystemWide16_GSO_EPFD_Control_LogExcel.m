@@ -50,7 +50,7 @@ fprintf(">> Simulation start : %s\n", datestr(tStart));
 fprintf(">> Simulation end   : %s\n", datestr(tEnd));
 
 % ===== Log path =====
-logFolder = 'C:\Users\jacky\Desktop\jacky_code\Matlab_data';
+logFolder = 'C:\Users\jacky\Desktop\jacky_code\jacky_code\Matlab_data';
 if ~exist(logFolder,'dir'), mkdir(logFolder); end
 logFile = fullfile(logFolder,'LEO_Beam16_EPFD_Log.xlsx');  % keep your original name
 

@@ -10,6 +10,28 @@ function [Tplot, Tstats] = PlotFullPowerSweepUserSatisfactionCdfCompare(~, opts)
 %   userSetMode — "all_users" (default) | "affected_users"
 %   recordSatellite — for affected_users (default P03_S49)
 %   geoName, xAxisPercent, showFigure, figurePath, tablePath
+%
+% =====================================================================
+% 【中文說明】論文 Evaluation 圖五：ch5_U{50,70}_UserSatisfaction_CDF_3MethodCompare
+%   「CDF of user satisfaction for different interference mitigation methods」
+%
+% 畫什麼：三個方法（PC + Tilt / Only HBR / EABR）在 t0 這一瞬間的
+%         使用者滿意度經驗 CDF，F(x) = P(S <= x)。
+%         曲線越往右 = 越多 user 維持高滿意度；
+%         曲線在低滿意度區越早爬升 = 越多 user 服務品質受損。
+%         論文結論：EABR 的曲線最偏右，代表它不只提高平均值，
+%                   也降低了低滿意度 user 的比例。
+%
+% t0 的定義與圖一～圖四相同：referenceExcelPath 上「backoff 前 EPFD 最高」的 slot。
+%
+% userSetMode 決定統計哪一群 user：
+%   "home_cohort"     recordSatellite 原本歸屬的 user（jacky.m 圖五用這個，與圖三/四一致）
+%   "all_users"       所有 user
+%   "affected_users"  只算受關束影響的 user
+%
+% 【注意】'fullpower' 來源的 Excel 必須含 PerUser 分頁才能算 CDF。
+% 舊版 sweep 產生的 xlsx 沒有這個分頁，需要重跑 RelayOnly / EABR sweep。
+% =====================================================================
 
 if nargin < 2 || isempty(opts)
     opts = struct();

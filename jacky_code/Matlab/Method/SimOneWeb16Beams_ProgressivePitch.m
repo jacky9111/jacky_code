@@ -20,7 +20,7 @@ function T = SimOneWeb16Beams_ProgressivePitch(root, leoList, geoList, stepSec, 
 %     .tStartStr (default=sc.StartTime)
 %     .tEndStr   (default=sc.StopTime)
 %     .saveExcel (default=true)
-%     .excelPath (default='C:\Users\jacky\Desktop\jacky_code\Matlab_data\OneWeb16Beam_MatlabSim.xlsx')
+%     .excelPath (default='C:\Users\jacky\Desktop\jacky_code\jacky_code\Matlab_data\OneWeb16Beam_MatlabSim.xlsx')
 %     .beamOrder (default="northToSouth")  % or "southToNorth"
 %     .metric (default="epfd")            % "epfd" or "alpha"
 %     .epfd_thr_dB (default=-173.4)       % dB(W/m^2/1MHz)
@@ -56,7 +56,7 @@ if ~isfield(opts, 'saveExcel')
     opts.saveExcel = true;
 end
 if ~isfield(opts, 'excelPath') || strlength(string(opts.excelPath)) == 0
-    opts.excelPath = 'C:\Users\jacky\Desktop\jacky_code\Matlab_data\OneWeb16Beam_MatlabSim.xlsx';
+    opts.excelPath = 'C:\Users\jacky\Desktop\jacky_code\jacky_code\Matlab_data\OneWeb16Beam_MatlabSim.xlsx';
 end
 if ~isfield(opts, 'beamOrder') || strlength(string(opts.beamOrder)) == 0
     opts.beamOrder = "northToSouth";

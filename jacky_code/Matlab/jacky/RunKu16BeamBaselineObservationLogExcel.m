@@ -14,6 +14,36 @@ function [Tuser, Tbeam, Tsat, Tglobal] = RunKu16BeamBaselineObservationLogExcel(
 % opts.leoList. If non-empty, PerUser / PerBeam / PerSatellite rows are written only
 % for these satellites; physics (EPFD, SINR, power control) still uses full leoList.
 % Global sheet is unchanged (full-system aggregate per timestep).
+%
+% =====================================================================
+% 【中文說明】PC + Tilt baseline 的模擬核心（需要 STK 連線）
+%
+% 這支負責論文 Compared Schemes 的第 (2) 個方法 ——
+% 重現 Jalali et al.「Joint Power and Tilt Control」：
+% 同時調整 LEO 的發射功率與衛星傾斜角，以壓低對 GS 的干擾。
+% 它不使用 helper beam，也不做 beam reassociation，
+% 所以在論文中被關束影響的 user 無法被救回。
+%
+% 由 RunEvalFourMethodSweepsLocal 呼叫，關鍵開關：
+%   enablePowerControl      = true   開啟功率控制（PC）
+%   enableBaselineTilt      = true   開啟衛星傾斜（Tilt）
+%   baselineTiltSatelliteId          對哪顆衛星做傾斜（= critical 衛星）
+%   baselineTiltMaxDeg      = 10     最大傾斜角 [deg]，論文 Table 參數
+%   baselineTiltStepDeg     = 0.5    傾斜角搜尋步長（overhead 量測另用較粗步長）
+%   enablePowerRedistribution/enableBidirectionalRelay = false
+%                                    確保不混入本論文 EABR 的機制
+%
+% 頻譜模型：user link 有 8 個固定通道 × 250 MHz，
+%           beam b 對應通道 mod(b-1,8)+1（所以 beam 1 與 beam 9 同通道）。
+%           SINR / 容量只計「同通道」干擾；
+%           但 EPFD 是對所有 active beam 加總（不依通道過濾），符合 ITU 定義。
+%
+% 輸出 Excel：LEO16_Ku_Baseline_Observation_PC_BaselineTilt_GS01_U<U>_Aligned.xlsx
+%             供論文圖三、圖五讀取（sourceType = 'ku16_pc_tilt'）。
+%
+% opts.excelSatelliteIds：只把這幾顆衛星寫進 PerUser/PerBeam/PerSatellite 分頁，
+%   用來控制檔案大小；物理計算（EPFD、SINR、功率控制）仍用完整 leoList。
+% =====================================================================
 
 if nargin < 2 || isempty(opts), opts = struct(); end
 if ~isfield(opts,'leoList') || isempty(opts.leoList), error('opts.leoList required'); end
@@ -23,13 +53,13 @@ sc = root.CurrentScenario;
 if isempty(sc), error('No current STK scenario'); end
 
 here = fileparts(mfilename('fullpath'));
-addpath(fullfile(here, '..', 'powertilt'));
+addpath(fullfile(here, '..', 'powertilt'));   % PC+Tilt 的天線增益 / 幾何工具在這裡
 
-leoList = cellstr(string(opts.leoList));
-geoList = cellstr(string(opts.geoList));
+leoList = cellstr(string(opts.leoList));      % 參與模擬的 LEO
+geoList = cellstr(string(opts.geoList));      % 受擾 GSO
 Nleo = numel(leoList);
 Ngeo = numel(geoList);
-Nbeam = 16;
+Nbeam = 16;                                   % OneWeb-like 每顆衛星 16 束
 
 if ~isfield(opts,'stepSec') || ~isfinite(opts.stepSec), opts.stepSec = 1; end
 step = double(opts.stepSec) / 86400;

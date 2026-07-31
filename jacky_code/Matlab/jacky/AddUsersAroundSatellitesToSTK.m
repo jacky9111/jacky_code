@@ -12,11 +12,26 @@ function userNames = AddUsersAroundSatellitesToSTK(root, satNames, areaSide_km, 
 %
 % Output:
 % - userNames: 所有建立的 user 名稱（string column vector）
+%
+% 【用途說明】這支只負責「在 STK 場景裡把 user 畫出來」，方便肉眼檢查覆蓋關係。
+% Evaluation 的模擬本身走 opts.useSimulatedUsers = true，
+% 由 GenerateSimulatedUsersAroundSatellites 在 MATLAB 內部生成同樣分佈的 user，
+% 不依賴 STK Facility，所以這支就算跳過也不影響論文數據。
 
 satNames = string(satNames(:));
 if nargin < 5
     tStr = [];
 end
+
+% 取得目前 STK 場景；未指定時間則用場景起始時間讀取子星點
+sc = root.CurrentScenario;
+if isempty(sc)
+    error('AddUsersAroundSatellitesToSTK:NoScenario', 'No current STK scenario.');
+end
+if isempty(tStr) || strlength(string(tStr)) == 0
+    tStr = char(sc.StartTime);
+end
+tStr = char(string(tStr));
 
 if isempty(satNames)
     userNames = strings(0,1);
@@ -29,10 +44,12 @@ if numUsersPerSatellite <= 0 || mod(numUsersPerSatellite, 1) ~= 0
     error('numUsersPerSatellite must be a positive integer.');
 end
 
-deleteExistingUsers(sc, "User_");
+deleteExistingUsers(sc, "User_");   % 先清掉上一次跑剩下的 User_* facility，避免重複堆積
+% 用與模擬完全相同的灑點演算法算出經緯度，確保 STK 畫面與 MATLAB 內部一致
 [userNames, ~, userLat_deg, userLon_deg, ~] = GenerateSimulatedUsersAroundSatellites( ...
     root, satNames, areaSide_km, numUsersPerSatellite, tStr, "User_");
 
+% 逐一在 STK 建立 Facility 物件（僅供視覺化）
 for iu = 1:numel(userNames)
     userName = char(userNames(iu));
     userObj = sc.Children.New('eFacility', userName);

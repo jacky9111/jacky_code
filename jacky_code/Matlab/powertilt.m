@@ -15,7 +15,7 @@ addpath(fullfile(pwd, 'Matlab'));
 global OneWeb_leo OneWeb_geo  OneWeb_OMNet_leo OneWeb_OMNet_geo beam_config geoLongitudes OneWeb_OMNet_leo_part OneWeb_OMNet_geo_part;
 disp("初始化");
 Satellite_Name();
-file_path = "C:\Users\jacky\Desktop\jacky_code\";
+file_path = "C:\Users\jacky\Desktop\jacky_code\jacky_code\";
 if ~exist(file_path + 'STK','dir')
     mkdir(file_path);
 end
@@ -86,10 +86,10 @@ end
 
 %% 轉tlm格式
 %LEO
-convert_tlm('C:\Users\jacky\Desktop\jacky_code\oneweb_tle\20251125_211107');
+convert_tlm('C:\Users\jacky\Desktop\jacky_code\jacky_code\oneweb_tle\20251125_211107');
 
 %GEO
-convert_tlm('C:\Users\jacky\Desktop\jacky_code\geo_tle\20251125_212200');
+convert_tlm('C:\Users\jacky\Desktop\jacky_code\jacky_code\geo_tle\20251125_212200');
 
 %% Read LEO TLE Content 
 
@@ -97,7 +97,7 @@ disp("read TLEs");
 
 % 開啟檔案
 %LEO
-filename = fullfile('C:\Users\jacky\Desktop\jacky_code\oneweb_tle\20251125_211107', '_oneweb.tle');
+filename = fullfile('C:\Users\jacky\Desktop\jacky_code\jacky_code\oneweb_tle\20251125_211107', '_oneweb.tle');
 fid = fopen(filename, 'r');
 if fid == -1
     error('❌ 無法開啟 TLE 檔案，請確認路徑是否正確');
@@ -113,7 +113,7 @@ tle_data = parseTLE(tle_lines);
 disp("---------------------- done");
 
 %GEO
-filename = fullfile('C:\Users\jacky\Desktop\jacky_code\geo_tle\20251125_212200', '_geo.tle');
+filename = fullfile('C:\Users\jacky\Desktop\jacky_code\jacky_code\geo_tle\20251125_212200', '_geo.tle');
 fid = fopen(filename, 'r');
 if fid == -1
     error('❌ 無法開啟 TLE 檔案，請確認路徑是否正確');
@@ -463,6 +463,6 @@ disp("---------------------- done");
 
 %% STL 關閉後用載入的方式開啟
 disp("載入舊場景");
-root.LoadScenario('C:\Users\jacky\Desktop\jacky_code\STK\Scenario.sc');
+root.LoadScenario('C:\Users\jacky\Desktop\jacky_code\jacky_code\STK\Scenario.sc');
 sc = root.CurrentScenario;
 disp("---------------------- done");

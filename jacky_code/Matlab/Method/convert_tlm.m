@@ -8,7 +8,7 @@ function convert_tlm(folderPath)
 %   folderPath  - (string or char) TLE 檔案所在的資料夾路徑
 %
 % 用法範例：
-%   convert_tlm('C:\Users\jacky\Desktop\jacky_code\oneweb_tle\20251029_173722')
+%   convert_tlm('C:\Users\jacky\Desktop\jacky_code\jacky_code\oneweb_tle\20251029_173722')
 
     if nargin < 1
         error('❌ 請提供 TLE 資料夾路徑，例如：convert_tlm("C:\path\to\folder")');

@@ -30,7 +30,7 @@ function [LEO_data, GEO_data, GS_data] = Extract_Positions_From_STK(root, leoLis
     LEO_sub_lat = zeros(1, N_leo);
     LEO_sub_lon = zeros(1, N_leo);
     % #region agent log
-    try, fid=fopen('c:\Users\jacky\Desktop\jacky_code\.cursor\debug.log','a'); fprintf(fid,'{"location":"Extract_Positions_From_STK.m:29","message":"LEO extract start","data":{"N_leo":%d,"first3":["%s","%s","%s"]},"hypothesisId":"A","timestamp":%.0f}\n', N_leo, leoList{1}, leoList{min(2,numel(leoList))}, leoList{min(3,numel(leoList))}, fix(now*86400000)); fclose(fid); catch, end
+    try, fid=fopen('c:\Users\jacky\Desktop\jacky_code\jacky_code\.cursor\debug.log','a'); fprintf(fid,'{"location":"Extract_Positions_From_STK.m:29","message":"LEO extract start","data":{"N_leo":%d,"first3":["%s","%s","%s"]},"hypothesisId":"A","timestamp":%.0f}\n', N_leo, leoList{1}, leoList{min(2,numel(leoList))}, leoList{min(3,numel(leoList))}, fix(now*86400000)); fclose(fid); catch, end
     % #endregion
     
     for i = 1:N_leo
@@ -66,7 +66,7 @@ function [LEO_data, GEO_data, GS_data] = Extract_Positions_From_STK(root, leoLis
             
         catch ME
             % #region agent log
-            try, fid=fopen('c:\Users\jacky\Desktop\jacky_code\.cursor\debug.log','a'); fprintf(fid,'{"location":"Extract_Positions_From_STK.m:65","message":"LEO extract failed","data":{"leoIdx":%d,"leoName":"%s","err":"%s"},"hypothesisId":"A,D,E","timestamp":%.0f}\n', i, leoName, strrep(strrep(ME.message,sprintf('\n'),' '),'"',''''), fix(now*86400000)); fclose(fid); catch, end
+            try, fid=fopen('c:\Users\jacky\Desktop\jacky_code\jacky_code\.cursor\debug.log','a'); fprintf(fid,'{"location":"Extract_Positions_From_STK.m:65","message":"LEO extract failed","data":{"leoIdx":%d,"leoName":"%s","err":"%s"},"hypothesisId":"A,D,E","timestamp":%.0f}\n', i, leoName, strrep(strrep(ME.message,sprintf('\n'),' '),'"',''''), fix(now*86400000)); fclose(fid); catch, end
             % #endregion
             warning('无法提取 %s 的位置: %s', leoName, ME.message);
             LEO_pos(:, i) = [0; 0; 0];
@@ -75,7 +75,7 @@ function [LEO_data, GEO_data, GS_data] = Extract_Positions_From_STK(root, leoLis
         end
     end
     % #region agent log
-    try, fid=fopen('c:\Users\jacky\Desktop\jacky_code\.cursor\debug.log','a'); fprintf(fid,'{"location":"Extract_Positions_From_STK.m:74","message":"LEO extract loop done","data":{"N_leo":%d},"hypothesisId":"C,D","timestamp":%.0f}\n', N_leo, fix(now*86400000)); fclose(fid); catch, end
+    try, fid=fopen('c:\Users\jacky\Desktop\jacky_code\jacky_code\.cursor\debug.log','a'); fprintf(fid,'{"location":"Extract_Positions_From_STK.m:74","message":"LEO extract loop done","data":{"N_leo":%d},"hypothesisId":"C,D","timestamp":%.0f}\n', N_leo, fix(now*86400000)); fclose(fid); catch, end
     % #endregion
     
     LEO_data.pos_ecef_km = LEO_pos;

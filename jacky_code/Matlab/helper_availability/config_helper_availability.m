@@ -25,6 +25,27 @@ function cfg = config_helper_availability()
 %   angle    : deg (public API) / rad (internal trig only)
 %   power    : W
 %   EPFD     : linear W/m^2/reference-bandwidth internally; dB only for I/O
+%
+% =====================================================================
+% 【中文說明】helper availability 模組的「唯一參數來源」。
+% 要換場景、換密度、換門檻，改這一支就好，不要把常數散落到各處理函式裡。
+%
+% 想改什麼就找對應區塊：
+%   換 GS / GSO 位置        → common.gsLat_deg / gsLon_deg / gsoLon_deg
+%   換觀察時間窗            → common.tStart_s / tEnd_s / tStep_s
+%   換 16-beam 大小         → common.beam.halfEW_ref_deg / halfNS_total_ref_deg
+%                             （注意 calibrateHalfOverlap=true 時會被校準覆寫）
+%   換 helper 判定嚴格度    → common.helperMinOverlapBeamFrac
+%   換 EPFD 門檻            → 由 ku_epfd_params() 帶入 common.epfdThr_dB
+%   新增/修改密度情境       → 下方的 c1~c4 與 cfg.constellations
+%
+% 【beam 尺寸校準的重要說明】
+% 半角並不是直接照抄 STK 的 -5 dB 值（34 / 33.5）。在本模組的球面地球 +
+% 16-beam ray/Earth 多邊形模型下，那組數值會讓同軌覆蓋過大。
+% 因此改成：保留 -5 dB 的長寬比當參考，再校準 halfNS_total，
+% 使得在 OneWeb-like 幾何下「同軌 ±1 鄰居剛好在中點交會」（各覆蓋一半）。
+% 校準出來的尺寸由四種密度共用，確保密度是唯一變因。
+% =====================================================================
 
 cfg = struct();
 
@@ -43,11 +64,14 @@ cfg.disclaimer = [ ...
 common = struct();
 
 % Ground station and reference GSO (same longitude as the GS).
+% 地面站與受擾 GSO（兩者同經度 → 論文的最壞 in-line 幾何）
 common.gsLat_deg  = 0;        % GS latitude  [deg]
 common.gsLon_deg  = 0;        % GS longitude [deg]
 common.gsoLon_deg = 0;        % ideal GSO longitude [deg] (== GS longitude)
 
 % Simulation time grid (relative seconds around the aligned epoch t = 0 s).
+% 時間軸：t=0 定義為「參考衛星正好通過 GS 正上方」的時刻，
+% 論文取前後各 120 s、每 1 s 一個 slot（= 論文的 time slot 長度）
 common.tStart_s = -120;
 common.tEnd_s   =  120;
 common.tStep_s  =  1;

@@ -19,27 +19,38 @@ function caseResult = run_constellation_case(constellation, common)
 %   .criticalRecord : 1 x nT struct array, .satellites per slot (raw record)
 %
 % Units: km, deg, W, linear EPFD (dB only for time-series output fields).
+%
+% 【中文說明】單一密度情境的完整流程。整條 pipeline 依序是：
+%   建星座幾何 → 把參考衛星對齊到 GS 正上方（定義 t=0）→ 傳播軌道 →
+%   對每個 slot：判可見性 → 算 beam 足跡 → 算 aggregate EPFD 並關束（找 critical）
+%                → 辨識 recovery-capable helper → 累加統計量
+% 最後把累加器換算成論文 Table 的四個指標。
 
 beam = common.beam;
 P = common.params;
 
 % Geometry and alignment.
+% 建立 Walker 星座幾何，並把「參考衛星」平移到 t=0 時剛好通過 GS 正上方 ——
+% 這一步確保三種密度的時間軸有共同的物理基準，才能互相比較
 geom = generate_constellation_geometry(constellation, common);
 [geom, alignInfo] = align_reference_satellite_over_gs(geom, common);
 satNames = string({geom.sats.name}.');
 
 % Time grid.
+% 時間軸：config 預設 t = -120 ~ +120 s，每 1 s 一個 slot
 t_s = common.tStart_s : common.tStep_s : common.tEnd_s;
 nT = numel(t_s);
 state = propagate_satellites(geom, common, t_s);
 
 % Fixed ECEF ground station and reference GSO (same longitude as GS).
+% GS 與受擾 GSO 的固定位置（GSO 星下點與 GS 同經緯度 → 最壞 in-line 幾何）
 P_gs_km = common.Re_km * [cosd(common.gsLat_deg) * cosd(common.gsLon_deg); ...
                           cosd(common.gsLat_deg) * sind(common.gsLon_deg); ...
                           sind(common.gsLat_deg)];
 P_geo_km = common.Rgeo_km * [cosd(common.gsoLon_deg); sind(common.gsoLon_deg); 0];
 
 % Accumulators for the four summary metrics.
+% 四個統計指標的累加器（定義見 compute_helper_availability_metrics.m）
 acc = struct('criticalSlotsCount', 0, 'sumCriticalSatsCriticalSlot', 0, ...
     'totalCriticalInstances', 0, 'sumHelpersOverInstances', 0, ...
     'zeroHelperInstances', 0, 'totalClosedBeamInstances', 0, ...

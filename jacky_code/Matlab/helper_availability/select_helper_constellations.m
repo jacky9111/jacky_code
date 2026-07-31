@@ -8,6 +8,17 @@ function cfg = select_helper_constellations(cfg, selection)
 %   {"High-density", "Low-density"}
 %
 % Names must match cfg.constellations{i}.name exactly.
+%
+% 【中文說明】只跑部分密度情境用的篩選器。完整跑四種密度（尤其 High-density
+% 的 2664 顆衛星）很花時間，開發或只要補某一列數據時可以先篩掉其他列。
+%
+% 在 jacky.m 裡對應的變數是：
+%   helperConstellationsToRun      統計表那一段（main_helper_availability）
+%   helperPlotConstellationsToRun  worst-EPFD 場景圖那一段（main_worst_slot_schematic）
+%
+% 名稱必須與 config_helper_availability.m 裡的 c.name 完全一致：
+%   "OneWeb-like reference" / "Medium-density" / "High-density" / "Low-density"
+% 打錯字會直接報錯並列出可用名稱，不會安靜地跑錯情境。
 
 if nargin < 2 || isempty(selection)
     return;

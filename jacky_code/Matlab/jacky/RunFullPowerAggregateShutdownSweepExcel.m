@@ -11,25 +11,64 @@ function [TbeamContributionLog, TbackoffLog, TavgUserSatisfaction, TrelayAssignm
 % Excel averages by per-slot home assignment (userSatIdx); relayed users remain
 % in that slot's home satellite cohort.
 % Users may be read from STK facilities or generated in MATLAB (useSimulatedUsers).
+%
+% =====================================================================
+% 【中文說明】論文三個方法的共用模擬核心（需要 STK 連線）
+%
+% 這支是整個 Evaluation 最重要的計算引擎。Beam shutdown only、Only HBR、EABR
+% 三個方法都跑這支，差別只在 opts 的兩個開關：
+%   enableRelay=false                        → Beam shutdown only
+%   enableRelay=true,  enableMiddleHelperSwap=false → Only HBR
+%   enableRelay=true,  enableMiddleHelperSwap=true  → EABR（本論文）
+% （PC + Tilt 走另一支 RunKu16BeamBaselineObservationLogExcel.m）
+%
+% 每個 1 秒 time slot 依序做四件事：
+%   步驟 1  User 重新關聯：把每個 user 指派給最近星下點的衛星，再指派給覆蓋它的 beam
+%   步驟 2  EPFD backoff：算 GS 端的 aggregate EPFD，若超過門檻就依干擾貢獻大小
+%           逐一關閉 critical 衛星上的 beam，直到 EPFD 合法為止（→ 圖一、圖二的資料）
+%   步驟 3  服務救援（enableRelay 時）：
+%           (a) SBR — 若 helper 中間的「開啟束」也覆蓋到自家 user 且滿意度仍達標，
+%               就把自家 user 換到該安全束，騰出功率（enableMiddleHelperSwap）
+%           (b) 把騰出的功率移到能覆蓋「關閉束受災 user」的 helper recovery beam
+%           (c) 用提升後的功率接手這些 user（→ 圖四的救援人數）
+%   步驟 4  計算滿意度並寫進 Excel（→ 圖三、圖五的資料）
+%
+% relayPowerShiftMode 決定功率怎麼搬：
+%   'overlapCapped'          只從有覆蓋重疊的 beam 借功率，且單束不得超過
+%                            maxBeamPower_W（論文用這個，較保守也較實際）
+%   'helperSatPoolUnlimited' 把 helper 衛星所有開啟束的餘裕集中成一個 pool，
+%                            不設單束上限（僅供敏感度分析）
+%
+% Excel 的平均是依「每個 slot 當下的歸屬衛星」(userSatIdx) 統計，
+% 被 relay 出去的 user 仍算在原本那顆衛星的 cohort 裡 ——
+% 這樣圖三的「某顆衛星的平均滿意度」才不會因為換手而漏算。
+%
+% 主要輸出（同時寫入 opts.excelPath 的多個分頁）：
+%   Slot_EPFD    每 slot 的 EPFD（before/after）與關閉束數 → 圖一、圖二
+%   PerUser      每個 user 的逐 slot 滿意度               → 圖五 CDF
+%   其餘分頁     beam 貢獻、backoff 記錄、relay 指派明細
+% =====================================================================
 
 if nargin < 2 || isempty(opts)
     opts = struct();
 end
 opts = applyDefaults(root, opts);
 
-sc = root.CurrentScenario;
+sc = root.CurrentScenario;                      % 取得目前 STK 場景
 here = fileparts(mfilename('fullpath'));
-addpath(fullfile(here, '..', 'powertilt'));
+addpath(fullfile(here, '..', 'powertilt'));     % 借用 powertilt 的天線增益 / 幾何函式
 
+% ---- 時間軸：把場景時間窗切成 stepSec 秒一格的 time slot ----
 tStart = datenum(char(string(opts.tStartStr)));
 tEnd = datenum(char(string(opts.tEndStr)));
-step = double(opts.stepSec) / 86400;
-satList = string(opts.satList(:));
-geoList = string(opts.geoList(:));
+step = double(opts.stepSec) / 86400;            % 秒 → MATLAB datenum 的「天」
+satList = string(opts.satList(:));              % 參與模擬的 LEO 清單
+geoList = string(opts.geoList(:));              % 受擾 GSO 清單
 gsName = char(string(opts.gsName));
 timeGrid = tStart:step:tEnd;
 numSlots = numel(timeGrid);
 
+% ---- GSO 地面站位置：轉成地心直角座標，供後續距離 / 離軸角計算 ----
 gsLat_deg = double(opts.gsLat_deg);
 gsLon_deg = double(opts.gsLon_deg);
 gsAlt_km = double(opts.gsAlt_km);
@@ -133,6 +172,9 @@ slotEpfdRows = struct('time', {}, 'geo', {}, 'gs_epfd_before_dB', {}, 'gs_epfd_a
     'critical_distance_to_gs_deg', {}, 'seconds_from_critical', {}, 'critical_overhead_time', {}, ...
     'seconds_from_worst_epfd_slot', {}, 'worst_epfd_slot_time', {}, 'critical_sat_closed_beam_count', {});
 
+% =====================================================================
+% 主迴圈：逐個 1 秒 time slot 模擬
+% =====================================================================
 for iSlot = 1:numSlots
     t = timeGrid(iSlot);
     tStr = datestr(t, 'dd mmm yyyy HH:MM:SS');
@@ -154,12 +196,16 @@ for iSlot = 1:numSlots
         end
         drawnow;
     end
+    % ---- 步驟 1：取得本 slot 的衛星/beam 幾何，並重新做 user-beam 關聯 ----
     satGeom = buildSatelliteBeamGeometryLocal(root, satList, tStr, opts.beamHalfNS_deg);
     if recordSatisfaction && opts.reassignUsersEachSlot
+        % 每個 user 指派給「星下點最近」的衛星，再指派給覆蓋它的那條 beam
         [userCountMat, userSatIdx, userBeamIdx] = assignUsersToNearestBeamCenterLocal( ...
             satGeom, P_users_km, opts.beamHalfEW_deg, opts.beamHalfNS_deg);
     end
+    % 受擾 GSO 的參考點（useIdealGsoAtGs=true 時放在 GS 正上方，即最壞 in-line）
     [P_geo_all, geoNames] = buildGeoReferencePointsLocal(root, geoList, gsLon_deg, opts.useIdealGsoAtGs, tStr);
+    % 逐 beam 算出它對 GS 造成的 EPFD 貢獻，組成一張表
     [beamTable, threshold_lin] = buildFullPowerBeamTable(tStr, gsName, satList, satGeom, P_gs_km, P_geo_all, geoNames, opts);
 
     for ig = 1:numel(geoNames)
@@ -169,25 +215,28 @@ for iSlot = 1:numSlots
             continue;
         end
 
+        % ---- 步驟 2：EPFD backoff（→ 論文圖一、圖二的資料來源）----
+        % aggregate EPFD = 所有 beam 的干擾功率在線性域相加
         aggBefore_lin = sum(Tgeo.epfd_lin);
         aggAfter_lin = aggBefore_lin;
         shutCount = 0;
         slotAggBefore_dB = 10*log10(max(aggBefore_lin, 1e-300));
 
-        linTol = threshold_lin * 1e-12;
-        slotViolated = aggAfter_lin > threshold_lin + linTol;
+        linTol = threshold_lin * 1e-12;                        % 浮點比較容差
+        slotViolated = aggAfter_lin > threshold_lin + linTol;  % 本 slot 是否超標
         if slotViolated
+            % 貪婪關束：干擾貢獻由大到小排序，一條一條關，直到 EPFD 合法為止
             [~, order] = sort(Tgeo.epfd_lin, 'descend');
             for k = 1:numel(order)
                 row = order(k);
                 if aggAfter_lin <= threshold_lin + linTol
-                    break;
+                    break;                                     % 已經壓到門檻以下，停止關束
                 end
                 before_lin = aggAfter_lin;
-                aggAfter_lin = aggAfter_lin - Tgeo.epfd_lin(row);
-                Tgeo.final_power_W(row) = 0;
+                aggAfter_lin = aggAfter_lin - Tgeo.epfd_lin(row);  % 扣掉這條 beam 的貢獻
+                Tgeo.final_power_W(row) = 0;                   % 該 beam 功率歸零 = 關閉
                 Tgeo.shut_off(row) = 1;
-                Tgeo.shutdown_rank(row) = k;
+                Tgeo.shutdown_rank(row) = k;                   % 記錄第幾個被關（貢獻排名）
                 shutCount = k;
 
                 backoffRows(end+1).time = string(tStr); %#ok<AGROW>
@@ -272,6 +321,10 @@ for iSlot = 1:numSlots
             swapMiddleBeamIdx = zeros(NuserSlot, 1);
             middleServeCount = zeros(NsatSlot, NbeamSlot);
 
+            % ---- 步驟 3a：SBR（Safe-Beam Reassociation）—— 只有 EABR 會執行 ----
+            % 把 helper 衛星自家的 user 換到「中間的安全開啟束」，
+            % 前提是換過去之後自家滿意度仍 >= relayMinNativeSat，
+            % 這樣才能把原本那條束的功率釋放出來給救援用。
             if opts.enableRelay && opts.enableMiddleHelperSwap && epfdLegalBeforeRelay
                 [swapServiceMask, swapMiddleSatIdx, swapMiddleBeamIdx, middleServeCount, swapRowsSlot] = ...
                     applyMiddleHelperSwapLocal(string(tStr), geoNames(ig), satGeom, satList, shutOffMat, ...
@@ -280,6 +333,7 @@ for iSlot = 1:numSlots
                 swapServiceRows = [swapServiceRows, swapRowsSlot]; %#ok<AGROW>
             end
 
+            % 先算「完全不做救援」的滿意度，作為 Beam shutdown only 的基準
             satisfactionNoRelay = computeUserSatisfactionNoRelayLocal( ...
                 satGeom, satList, userSatIdx, userBeamIdx, userCountMat, P_users_km, Tgeo, opts.params, userDemand_bps);
             relaySatIdx = zeros(NuserSlot, 1);
@@ -288,8 +342,11 @@ for iSlot = 1:numSlots
             satisfactionRelay = satisfactionNoRelay;
             PbeamEffective_W = PbeamBase_W;
 
+            % ---- 步驟 3b/3c：功率重配 + HBR（Helper-Beam Reassociation）----
+            % 只有 EPFD 已經合法（關束成功）才進行救援，否則救援反而會再度超標。
             if opts.enableRelay && epfdLegalBeforeRelay
                 if isRelayPowerShiftUnlimitedLocal(opts)
+                    % 敏感度分析用：helper 全星餘裕集中成 pool，不設單束上限
                     PbeamEffective_W = beamPowerServeMatrixLocal(shutOffMat, PbeamBase_W, opts.beamAllocatePower_W);
                     [PbeamEffective_W, shiftRowsSlot] = poolHelperSpareToRelayBeamsUnlimitedLocal( ...
                         string(tStr), geoNames(ig), satGeom, satList, userSatIdx, userBeamIdx, shutOffMat, ...
@@ -297,8 +354,10 @@ for iSlot = 1:numSlots
                         opts.beamAllocatePower_W, opts.beamHalfEW_deg, opts.beamHalfNS_deg);
                     intraSatPowerShiftRows = [intraSatPowerShiftRows, shiftRowsSlot]; %#ok<AGROW>
                 else
+                    % 論文採用：只從有覆蓋重疊的 beam 借功率，單束上限 maxBeamPower_W
                     PbeamEffective_W = PbeamBase_W;
                     if opts.enableMiddleHelperSwap
+                        % 把 SBR 釋放出的功率加到 helper recovery beam 上
                         [PbeamEffective_W, shiftRowsSlot] = boostHelperBeamsBeforeRelayLocal( ...
                             string(tStr), geoNames(ig), satGeom, satList, userSatIdx, userBeamIdx, shutOffMat, ...
                             swapServiceMask, PbeamBase_W, P_users_km, opts.params, userDemand_bps, ...
@@ -306,10 +365,12 @@ for iSlot = 1:numSlots
                         intraSatPowerShiftRows = [intraSatPowerShiftRows, shiftRowsSlot]; %#ok<AGROW>
                     end
                 end
+                % HBR：把「關閉束底下的受災 user」指派給覆蓋得到它們的 helper recovery beam
                 [relayAssignedMask, relaySatIdx, relayBeamIdx] = assignRelayUsersLocal( ...
                     satGeom, satList, userSatIdx, userBeamIdx, shutOffMat, swapServiceMask, P_users_km, ...
                     PbeamEffective_W, opts.beamHalfEW_deg, opts.beamHalfNS_deg, opts.params, userDemand_bps, ...
                     opts.relayMinNativeSat, opts.relayMinRelayAvgSat);
+                % ---- 步驟 4：把 SBR + HBR 的結果一起換算成最終使用者滿意度 ----
                 satisfactionRelay = evaluateUserSatisfactionWithSwapRelayLocal( ...
                     satGeom, satList, userSatIdx, userBeamIdx, userCountMat, P_users_km, PbeamEffective_W, ...
                     swapServiceMask, swapMiddleSatIdx, swapMiddleBeamIdx, middleServeCount, ...
